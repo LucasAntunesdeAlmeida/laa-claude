@@ -194,6 +194,8 @@ Issues and PRs are welcome. Before opening a PR, read the authoring rules in [CL
 - A change to a skill, agent, or workflow prompt that changes behavior needs an eval case that fails before it and passes after it, plus a `version` bump in that plugin's `plugin.json`.
 - Stack-specific rules go in a stack pack, and language-agnostic ones in a practice pack, not in core.
 
+CI validates the marketplace and every plugin on each PR. Report security issues privately, as described in [SECURITY.md](SECURITY.md).
+
 ## License
 
 [MIT](LICENSE)

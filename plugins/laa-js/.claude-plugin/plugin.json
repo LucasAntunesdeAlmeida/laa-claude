@@ -5,5 +5,8 @@
   "author": {
     "name": "Lucas Almeida"
   },
+  "homepage": "https://github.com/LucasAntunesdeAlmeida/laa-claude#readme",
+  "repository": "https://github.com/LucasAntunesdeAlmeida/laa-claude",
+  "license": "MIT",
   "keywords": ["javascript", "typescript", "nodejs", "fastify", "express", "nestjs", "backend"]
 }

@@ -1,0 +1,23 @@
+name: Bug
+description: A skill, agent, workflow, hook, or mod did the wrong thing.
+labels: [bug]
+body:
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin and version
+      description: From `/plugin` in Claude Code, e.g. `laa 0.4.0`.
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What you ran and what happened
+      description: The command or request, what Claude did, and what you expected. Leave out secrets and private code.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Claude Code version and OS
+      description: From `claude --version`.

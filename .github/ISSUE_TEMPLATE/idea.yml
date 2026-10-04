@@ -1,0 +1,16 @@
+name: Idea or learning
+description: A new skill, agent, or pack, or a generic learning from /laa:retro that should improve the toolkit.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What should change
+      description: For a learning, paste the entry from `.claude/laa/learnings.md` (without anything private) and the evidence behind it.
+    validations:
+      required: true
+  - type: textarea
+    id: eval
+    attributes:
+      label: How would an eval catch it?
+      description: Behavior changes need an eval case that fails before the change and passes after it.
