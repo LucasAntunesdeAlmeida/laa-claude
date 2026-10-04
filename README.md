@@ -16,7 +16,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 | `laa-js` | Node.js conventions skill for TypeScript and JavaScript + `js-reviewer` agent |
 | `laa-git` | Practice pack, any language: git conventions skill (Conventional Commits, branches, history, PRs) + `git-reviewer` agent |
 | `laa-docs` | Practice pack, any language: README/onboarding conventions skill + `docs-reviewer` agent (catches docs drift) |
-| `laa-mods` | Mods (TypeScript function hooks): a default-branch guard and a status band above the prompt. Opt-in, see [Mods](#mods-laa-mods) |
+| `laa-mods` | Mods (TypeScript function hooks): a default-branch guard, a status band above the prompt, and a learnings triage pane. Opt-in, see [Mods](#mods-laa-mods) |
 
 **Stack packs** add language rules, and their reviewers join reviews of matching files. **Practice packs** add language-agnostic rules, and their reviewers join every review.
 
@@ -127,7 +127,12 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
   - a repo with no commits yet, whose first commit has nothing to branch from;
   - files git ignores, and files outside the repo.
 
-  The refusal tells Claude to create a task branch or a worktree. To work on the default branch on purpose, type `/laa-allow-main`, which allows it for the session; type it again to block again.
+  The refusal tells Claude to create a task branch or a worktree, and a toast shows it on screen. To work on the default branch on purpose, type `/laa-allow-main`, which allows it for the session; type it again to block again.
+- **Learnings pane**: `/laa-learnings [repo path]` opens a pane listing the open entries of `.claude/laa/learnings.md`: title, scope, kind, target, signal, and proposal.
+  - **Reject** marks an entry `status: rejected (dismissed in the laa-learnings pane)`, so `/laa:evolve` won't propose it again. The pane checks that the entry hasn't changed since it loaded before writing.
+  - **Evolve** (hotkey `e`) puts `/laa:evolve` in the prompt for you to send.
+
+  Nothing else changes from the pane: evolve still shows every diff for approval.
 - **Status band**, above the prompt in adopted repos: the branch, open learnings (with `/laa:evolve` at 3 or more), and a missing or stale project map (50+ commits since it changed, with `/laa:adopt`). It refreshes after each turn and each git command.
 
 The guard's scope is the `guard` option in `/config`: `adopted` (default: repos with `.claude/laa/`), `always` (every git repo), or `off`.

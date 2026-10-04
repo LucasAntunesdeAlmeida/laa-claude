@@ -29,7 +29,17 @@ export function fakeRepo(on: On, f: Fake = {}) {
 
   on('session.cwd', () => ({ value: ROOT }))
   on('fs.exists', ($, e) => ({ value: files.has(norm(e.path)) }))
-  on('fs.read', () => ({ value: f.learnings ?? '' }))
+  // learnings.md as the plugin last wrote it, and every toast it showed.
+  const seen = { learnings: f.learnings ?? '', toasts: [] as string[] }
+  on('fs.read', () => ({ value: seen.learnings }))
+  on('fs.write', ($, e) => {
+    seen.learnings = e.text
+    return { value: undefined }
+  })
+  on('ui.toast', ($, e) => {
+    seen.toasts.push(e.text)
+    return { value: undefined }
+  })
   on('process.run', ($, e) => {
     const cwd = norm(e.init?.cwd ?? ROOT)
     const args = e.argv.slice(1).join(' ')
@@ -46,6 +56,7 @@ export function fakeRepo(on: On, f: Fake = {}) {
   })
   // The tool itself: reached only when the plugin lets the call through.
   on('tool.call', () => ({ result: 'ran' as never }))
+  return seen
 }
 
 export const edit = (file_path: string) => ({ tool: 'Edit' as const, file_path, old_string: 'a', new_string: 'b' })

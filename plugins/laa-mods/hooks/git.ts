@@ -1,5 +1,7 @@
 // Pure helpers: paths, commands, and learnings text. Everything that calls the engine is in register.tsx.
 
+import type { Learning } from '../types'
+
 export type Repo = {
   top: string
   branch: string | null
@@ -46,3 +48,40 @@ export const commitDir = (command: string): string | null => {
 
 export const countOpenLearnings = (text: string) =>
   text.split(/\r?\n/).filter(line => /^- status: open\b/.test(line)).length
+
+// The [start, end) offsets of each `## ` entry in learnings.md, in file order.
+const entrySpans = (text: string) => {
+  const starts = [...text.matchAll(/^## /gm)].map(m => m.index ?? 0)
+  return starts.map((start, i) => [start, starts[i + 1] ?? text.length] as const)
+}
+
+const field = (block: string, name: string) =>
+  new RegExp(`^- ${name}:[ \\t]*(.*?)\\s*$`, 'm').exec(block)?.[1] ?? ''
+
+// The open entries, in the laa:retro format.
+export const parseLearnings = (text: string): Learning[] =>
+  entrySpans(text).flatMap(([start, end], index) => {
+    const block = text.slice(start, end)
+    if (!/^open\b/.test(field(block, 'status'))) return []
+    const title = (/^## (.*?)\s*$/m.exec(block)?.[1] ?? '').trim()
+    return [{
+      index,
+      title,
+      scope: field(block, 'scope'),
+      kind: field(block, 'kind'),
+      target: field(block, 'target'),
+      signal: field(block, 'signal'),
+      proposal: field(block, 'proposal'),
+    }]
+  })
+
+// The file with entry `index` marked rejected, or null when that entry is no longer the open one titled `title`.
+export const rejectLearning = (text: string, index: number, title: string, reason: string) => {
+  const span = entrySpans(text)[index]
+  if (!span) return null
+  const block = text.slice(span[0], span[1])
+  const open = parseLearnings(block)[0]
+  if (!open || open.title !== title) return null
+  const marked = block.replace(/^- status:[ \t]*open\b.*$/m, `- status: rejected (${reason})`)
+  return text.slice(0, span[0]) + marked + text.slice(span[1])
+}

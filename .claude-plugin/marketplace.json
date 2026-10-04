@@ -51,7 +51,7 @@
     {
       "name": "laa-mods",
       "source": "./plugins/laa-mods",
-      "description": "Mods (TypeScript function hooks): blocks edits and commits on the default branch, and shows branch, open learnings, and project-map age above the prompt.",
+      "description": "Mods (TypeScript function hooks): blocks edits and commits on the default branch, shows branch, open learnings, and project-map age above the prompt, and a pane to triage open learnings.",
       "category": "development"
     }
   ]

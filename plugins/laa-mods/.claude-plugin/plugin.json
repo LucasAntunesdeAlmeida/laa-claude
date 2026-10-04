@@ -1,7 +1,7 @@
 {
   "name": "laa-mods",
-  "version": "0.1.0",
-  "description": "Mods for the laa toolkit: blocks file changes and commits on the default branch, and shows laa status above the prompt.",
+  "version": "0.2.0",
+  "description": "Mods for the laa toolkit: blocks file changes and commits on the default branch, shows laa status above the prompt, and a pane to triage open learnings.",
   "author": {
     "name": "Lucas Almeida"
   },

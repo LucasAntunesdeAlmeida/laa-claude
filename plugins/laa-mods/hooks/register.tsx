@@ -1,24 +1,36 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Status } from '../types'
-import { commitDir, countOpenLearnings, isUnder, parentOf, resolveFrom, slash } from './git'
+import type { Learning, Learnings, Status } from '../types'
+import { commitDir, countOpenLearnings, isUnder, parentOf, parseLearnings, rejectLearning, resolveFrom, slash } from './git'
 import type { Repo } from './git'
 
 type Engine = EngineInterface
 
 const status = atom({ plugin: 'laa-mods', key: 'status' } as const, null)
 const allowMain = atom({ plugin: 'laa-mods', key: 'allowMain' } as const, false)
+const learnings = atom({ plugin: 'laa-mods', key: 'learnings' } as const, null)
 
 const ALLOW_COMMAND = 'laa-allow-main'
 const MAP_FILE = '.claude/laa/project-map.md'
 const STALE_MAP = 50
+const LEARNINGS_COMMAND = 'laa-learnings'
+const LEARNINGS_FILE = '.claude/laa/learnings.md'
+const PANE = 'laa-learnings'
 
 const denial = (repo: Repo, what: string) =>
   `laa: ${what} on the default branch \`${repo.branch}\` of ${repo.top} is blocked. ` +
   'Create a task branch first (`git switch -c feat/<slug>` or `fix/<slug>`), or a git worktree if the ' +
   'checkout has unrelated uncommitted changes. If the user explicitly wants this on the default branch, ' +
   `ask them to type /${ALLOW_COMMAND}; don't work around this block.`
+
+const baseName = (p: string) => slash(p).split('/').pop() || p
+
+// Refuses the call, and says so on screen as well as in the transcript.
+function blocked($: Engine, repo: Repo, what: string, short: string) {
+  $.ui.toast(`laa: blocked ${short} on ${repo.branch}. Create a task branch first.`)
+  return { deny: denial(repo, what) }
+}
 
 async function git($: Engine, cwd: string, ...args: string[]) {
   const run = await $.process.run(['git', ...args], { cwd, timeoutMs: 5000 })
@@ -62,7 +74,7 @@ async function guardFile($: Engine, guard: string, path: string) {
   if (!repo || !isUnder(file, repo.top) || isUnder(file, `${repo.top}/.git`)) return null
   // Ignored files (local settings, build output) never reach a commit.
   if ((await git($, repo.top, 'check-ignore', '-q', '--', file)).ok) return null
-  return { deny: denial(repo, `Changing ${file}`) }
+  return blocked($, repo, `Changing ${file}`, `editing ${baseName(file)}`)
 }
 
 async function statusOf($: Engine, repo: Repo): Promise<Status> {
@@ -94,6 +106,34 @@ async function refresh($: Engine) {
   }
 }
 
+async function loadLearnings($: Engine, top: string) {
+  const path = `${top}/${LEARNINGS_FILE}`
+  const text = (await $.fs.exists(path)) ? String(await $.fs.read(path)) : ''
+  const next: Learnings = { repo: top, entries: parseLearnings(text) }
+  await update($, learnings, () => next)
+  return next
+}
+
+// The person pressed Reject in the pane: mark the entry rejected, as /laa:evolve does, and reload.
+async function rejectEntry($: Engine, top: string, entry: Learning) {
+  const path = `${top}/${LEARNINGS_FILE}`
+  const text = (await $.fs.exists(path)) ? String(await $.fs.read(path)) : ''
+  const next = rejectLearning(text, entry.index, entry.title, 'dismissed in the laa-learnings pane')
+  if (next === null) {
+    $.ui.toast('laa: learnings.md changed since the pane loaded it; reloaded.')
+  } else {
+    await $.fs.write(path, next)
+    $.ui.toast(`laa: rejected "${entry.title}"`)
+  }
+  await loadLearnings($, top)
+  void refresh($)
+}
+
+async function startEvolve($: Engine) {
+  const filled = await $.prompt.fill({ text: '/laa:evolve ', mode: 'replace' })
+  $.ui.toast(filled.isFilled ? 'laa: /laa:evolve is in the prompt. Press Enter to run it.' : 'laa: type /laa:evolve to run it.')
+}
+
 export const register: Register = (on, options) => {
   const guard = String(options.guard ?? 'adopted')
 
@@ -101,6 +141,11 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: ALLOW_COMMAND,
       description: 'laa: allow or block edits and commits on the default branch for this session',
+    })
+    await $.command.register({
+      name: LEARNINGS_COMMAND,
+      description: 'laa: review the open learnings of this repo (or the repo at a path) in a pane',
+      argumentHint: '[repo path]',
     })
     void refresh($)
     return next(e)
@@ -116,6 +161,16 @@ export const register: Register = (on, options) => {
     }
   })
 
+  on('command.run', { command: LEARNINGS_COMMAND }, async ($, e) => {
+    const where = e.args.trim() || (await $.session.cwd())
+    const repo = await repoAt($, resolveFrom(await $.session.cwd(), where))
+    if (!repo) return { text: `laa: ${where} is not in a git repository.` }
+    const list = await loadLearnings($, repo.top)
+    const opened = await $.ui.open({ id: PANE, title: 'laa · open learnings' })
+    const count = `${list.entries.length} open learning${list.entries.length === 1 ? '' : 's'} in ${repo.top}`
+    return { text: opened.isPlaced ? `laa: ${count}.` : `laa: ${count}; widen the terminal to see the pane.` }
+  })
+
   on('tool.call', { tool: 'Edit' }, async ($, e, next) => (await guardFile($, guard, e.file_path)) ?? next(e))
   on('tool.call', { tool: 'Write' }, async ($, e, next) => (await guardFile($, guard, e.file_path)) ?? next(e))
   on('tool.call', { tool: 'NotebookEdit' }, async ($, e, next) => (await guardFile($, guard, e.notebook_path)) ?? next(e))
@@ -124,7 +179,7 @@ export const register: Register = (on, options) => {
     const dir = commitDir(e.command)
     if (dir !== null) {
       const repo = await guarded($, guard, await repoAt($, resolveFrom(await $.session.cwd(), dir || '.')))
-      if (repo) return { deny: denial(repo, 'Committing') }
+      if (repo) return blocked($, repo, 'Committing', 'a commit')
     }
     const ran = await next(e)
     // Branch switches and commits change what the band shows; the model's next step sees it current.
@@ -164,6 +219,32 @@ export const register: Register = (on, options) => {
       <Box key="laa">
         <Text dimColor>laa · </Text>
         {parts.flatMap((p, i) => (i === 0 ? [p] : [<Text key={`sep${i}`} dimColor> · </Text>, p]))}
+      </Box>
+    )
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const list = await read($, learnings)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    if (!list) return <Text dimColor>Run /{LEARNINGS_COMMAND} to load this repo's learnings.</Text>
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>{list.repo}</Text>
+        {list.entries.length === 0 && <Text>No open learnings. Nothing to evolve.</Text>}
+        {list.entries.map(entry => (
+          <Box key={`entry${entry.index}`} flexDirection="column" marginTop={1}>
+            <Text bold>{entry.title}</Text>
+            <Text dimColor>{entry.scope} · {entry.kind} · {entry.target}</Text>
+            <Text>{entry.signal}</Text>
+            <Text color="cyan">→ {entry.proposal}</Text>
+            <Button key={`reject${entry.index}`} label="Reject" onPress={() => rejectEntry($, list.repo, entry)} />
+          </Box>
+        ))}
+        {list.entries.length > 0 && (
+          <Box marginTop={1}>
+            <Button key="evolve" label="Evolve with /laa:evolve" variant="primary" hotkey="e" onPress={() => startEvolve($)} />
+          </Box>
+        )}
       </Box>
     )
   })
