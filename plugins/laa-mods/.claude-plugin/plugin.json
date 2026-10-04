@@ -1,0 +1,19 @@
+{
+  "name": "laa-mods",
+  "version": "0.1.0",
+  "description": "Mods for the laa toolkit: blocks file changes and commits on the default branch, and shows laa status above the prompt.",
+  "author": {
+    "name": "Lucas Almeida"
+  },
+  "keywords": ["laa", "mods", "git", "guard"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "guard": {
+      "type": "string",
+      "title": "Default-branch guard",
+      "description": "Where to block edits and commits on the default branch: repos adopted by laa (.claude/laa/ exists), every git repo, or nowhere.",
+      "default": "adopted",
+      "options": ["adopted", "always", "off"]
+    }
+  }
+}

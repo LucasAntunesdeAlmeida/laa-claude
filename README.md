@@ -16,6 +16,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 | `laa-js` | Node.js conventions skill for TypeScript and JavaScript + `js-reviewer` agent |
 | `laa-git` | Practice pack, any language: git conventions skill (Conventional Commits, branches, history, PRs) + `git-reviewer` agent |
 | `laa-docs` | Practice pack, any language: README/onboarding conventions skill + `docs-reviewer` agent (catches docs drift) |
+| `laa-mods` | Mods (TypeScript function hooks): a default-branch guard and a status band above the prompt. Opt-in, see [Mods](#mods-laa-mods) |
 
 **Stack packs** add language rules, and their reviewers join reviews of matching files. **Practice packs** add language-agnostic rules, and their reviewers join every review.
 
@@ -27,6 +28,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 /plugin install laa@laa
 /plugin install laa-go@laa        # and/or laa-dotnet@laa, laa-python@laa, laa-js@laa
 /plugin install laa-git@laa       # and/or laa-docs@laa
+/plugin install laa-mods@laa      # optional: needs a Claude Code build with mods (function hooks)
 ```
 Quick test without installing: `claude --plugin-dir ./plugins/laa --plugin-dir ./plugins/laa-go`
 
@@ -116,6 +118,21 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
 2. **Adapt locally**: `/laa:evolve` turns repo-specific learnings into small diffs to that repo's `CLAUDE.md` and `.claude/` assets.
 3. **Improve the toolkit**: generic learnings become a PR against this repo. The PR must include an **eval case** that would have caught the problem, plus a version bump.
 4. **Guardrail**: nothing changes without a diff you approve. Evals keep changes from regressing earlier behavior.
+
+## Mods (laa-mods)
+
+`laa-mods` is a plugin of function hooks: a TypeScript module that runs inside Claude Code, instead of a shell script. It enforces in code what the skills otherwise only ask for, and it shows state on screen without spending context tokens. The rest of the toolkit doesn't depend on it, and core's `sh` hooks keep working without it.
+
+- **Default-branch guard**: refuses Edit, Write, and NotebookEdit on files tracked in a repo whose default branch is checked out, and refuses `git commit` there. The default branch is `origin/HEAD`, or `main`/`master` without a remote. It lets through:
+  - a repo with no commits yet, whose first commit has nothing to branch from;
+  - files git ignores, and files outside the repo.
+
+  The refusal tells Claude to create a task branch or a worktree. To work on the default branch on purpose, type `/laa-allow-main`, which allows it for the session; type it again to block again.
+- **Status band**, above the prompt in adopted repos: the branch, open learnings (with `/laa:evolve` at 3 or more), and a missing or stale project map (50+ commits since it changed, with `/laa:adopt`). It refreshes after each turn and each git command.
+
+The guard's scope is the `guard` option in `/config`: `adopted` (default: repos with `.claude/laa/`), `always` (every git repo), or `off`.
+
+**Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it and `claude plugin test ./plugins/laa-mods` runs its tests. The mods API is early access and can change between Claude Code releases.
 
 ## Evals
 

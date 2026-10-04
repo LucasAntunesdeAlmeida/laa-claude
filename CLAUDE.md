@@ -16,6 +16,9 @@ This repo is a Claude Code plugin marketplace (`.claude-plugin/marketplace.json`
   - Every skill that changes files keeps its "Git" section: a task branch, or a worktree when the checkout has unrelated uncommitted changes, and never the default branch.
   - Keep these sections consistent across skills.
 - **Hooks and scripts** are POSIX `sh`. They run under Git Bash on Windows.
+  - The exception is `laa-mods`: TypeScript function hooks (mods). Nothing else may depend on it, because not every Claude Code build loads mods; core's `sh` hooks must keep working without it.
+  - In a mod, every function that takes `$` is declared at the top of the hooks module (`register.tsx`), since `claude plugin validate` only follows `$` there. Pure helpers can live in other files.
+  - Mod behavior changes need a `*.test.ts` case under `plugins/laa-mods/tests/` (run with `claude plugin test`) instead of an eval case, plus the version bump.
 - **Stack-specific knowledge** goes in a stack pack (`laa-go`, `laa-dotnet`, `laa-python`, `laa-js`), not in core. **Language-agnostic practices** (commit style, docs) go in a practice pack (`laa-git`, `laa-docs`). The only exception is the branch/worktree safety rule, which stays in core.
 
 ## Git
@@ -32,4 +35,6 @@ claude plugin validate .                     # marketplace
 claude plugin validate ./plugins/<plugin>    # each plugin
 claude --plugin-dir ./plugins/laa            # try it live
 claude plugin eval ./plugins/laa --runs 1 --no-publish
+claude plugin test ./plugins/laa-mods        # mod tests
+npx -p typescript tsc -p plugins/laa-mods    # mod types; load it once with --plugin-dir first
 ```

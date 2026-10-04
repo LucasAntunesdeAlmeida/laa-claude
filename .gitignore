@@ -1,2 +1,4 @@
 **/evals/results/
 .claude/settings.local.json
+# Type declarations Claude Code writes beside a mod when it loads it
+plugins/*/.claude-plugin/types/
