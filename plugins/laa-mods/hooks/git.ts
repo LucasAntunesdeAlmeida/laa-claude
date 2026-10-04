@@ -46,6 +46,11 @@ export const commitDir = (command: string): string | null => {
   return cd?.[1] ? unquote(cd[1]) : ''
 }
 
+// Which laa skill a skill prompt is, from the heading every laa skill starts with ("# /laa:fix").
+export const laaSkillOf = (prompt: string) => /^#\s*\/laa:([a-z-]+)\b/m.exec(prompt)?.[1] ?? null
+
+export const PIPELINES = ['fix', 'feature', 'migrate', 'build']
+
 export const countOpenLearnings = (text: string) =>
   text.split(/\r?\n/).filter(line => /^- status: open\b/.test(line)).length
 

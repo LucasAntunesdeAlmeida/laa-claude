@@ -22,8 +22,12 @@ export type Learning = {
 // The learnings the /laa pane shows, and the repo they came from.
 export type Learnings = { repo: string; entries: Learning[] }
 
+// The laa pipeline (/laa:fix, /laa:feature, /laa:migrate, /laa:build) running in this session,
+// for the /laa:retro nudge at its end.
+export type Pipeline = { skill: string; hasCommitted: boolean; isNudged: boolean }
+
 declare module 'claude-code' {
   interface PluginState {
-    'laa-mods': { status: Status | null; allowMain: boolean; learnings: Learnings | null }
+    'laa-mods': { status: Status | null; allowMain: boolean; learnings: Learnings | null; pipeline: Pipeline | null }
   }
 }

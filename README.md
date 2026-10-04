@@ -16,7 +16,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 | `laa-js` | Node.js conventions skill for TypeScript and JavaScript + `js-reviewer` agent |
 | `laa-git` | Practice pack, any language: git conventions skill (Conventional Commits, branches, history, PRs) + `git-reviewer` agent |
 | `laa-docs` | Practice pack, any language: README/onboarding conventions skill + `docs-reviewer` agent (catches docs drift) |
-| `laa-mods` | Mods (TypeScript function hooks): a default-branch guard, a status band above the prompt, and a learnings triage pane. Opt-in, see [Mods](#mods-laa-mods) |
+| `laa-mods` | Mods (TypeScript function hooks): a default-branch guard, a status band above the prompt, a learnings triage pane, and a `/laa:retro` nudge. Opt-in, see [Mods](#mods-laa-mods) |
 
 **Stack packs** add language rules, and their reviewers join reviews of matching files. **Practice packs** add language-agnostic rules, and their reviewers join every review.
 
@@ -114,7 +114,7 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
 
 ## The self-improvement loop
 
-1. **Capture**: `/laa:retro` runs at the end of each pipeline. It records only signals with evidence: corrections, missed steps, wrong assumptions, slow paths, bug classes, and patterns that worked. Between commands, in adopted repos, a hook spots corrections you make (in English or Portuguese) and asks Claude to log the lasting ones.
+1. **Capture**: `/laa:retro` runs at the end of each pipeline (with `laa-mods`, the prompt box suggests it if it didn't). It records only signals with evidence: corrections, missed steps, wrong assumptions, slow paths, bug classes, and patterns that worked. Between commands, in adopted repos, a hook spots corrections you make (in English or Portuguese) and asks Claude to log the lasting ones.
 2. **Adapt locally**: `/laa:evolve` turns repo-specific learnings into small diffs to that repo's `CLAUDE.md` and `.claude/` assets.
 3. **Improve the toolkit**: generic learnings become a PR against this repo. The PR must include an **eval case** that would have caught the problem, plus a version bump.
 4. **Guardrail**: nothing changes without a diff you approve. Evals keep changes from regressing earlier behavior.
@@ -133,6 +133,10 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
   - **Evolve** (hotkey `e`) puts `/laa:evolve` in the prompt for you to send.
 
   Nothing else changes from the pane: evolve still shows every diff for approval.
+- **Retro nudge**: after a `/laa:fix`, `/laa:feature`, `/laa:migrate`, or `/laa:build` that committed something, the prompt box suggests `/laa:retro` (Tab to take it).
+  - It shows once per pipeline, and never if the retro already ran.
+  - It stays quiet at approval gates before the first commit.
+  - It replaces Claude Code's own next-prompt guess only while the nudge is due.
 - **Status band**, above the prompt in adopted repos: the branch, open learnings (with `/laa:evolve` at 3 or more), and a missing or stale project map (50+ commits since it changed, with `/laa:adopt`). It refreshes after each turn and each git command.
 
 The guard's scope is the `guard` option in `/config`: `adopted` (default: repos with `.claude/laa/`), `always` (every git repo), or `off`.

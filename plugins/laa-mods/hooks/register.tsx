@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Learning, Learnings, Status } from '../types'
-import { commitDir, countOpenLearnings, isUnder, parentOf, parseLearnings, rejectLearning, resolveFrom, slash } from './git'
+import { commitDir, countOpenLearnings, isUnder, laaSkillOf, parentOf, parseLearnings, PIPELINES, rejectLearning, resolveFrom, slash } from './git'
 import type { Repo } from './git'
 
 type Engine = EngineInterface
@@ -10,6 +10,7 @@ type Engine = EngineInterface
 const status = atom({ plugin: 'laa-mods', key: 'status' } as const, null)
 const allowMain = atom({ plugin: 'laa-mods', key: 'allowMain' } as const, false)
 const learnings = atom({ plugin: 'laa-mods', key: 'learnings' } as const, null)
+const pipeline = atom({ plugin: 'laa-mods', key: 'pipeline' } as const, null)
 
 const ALLOW_COMMAND = 'laa-allow-main'
 const MAP_FILE = '.claude/laa/project-map.md'
@@ -17,6 +18,7 @@ const STALE_MAP = 50
 const LEARNINGS_COMMAND = 'laa-learnings'
 const LEARNINGS_FILE = '.claude/laa/learnings.md'
 const PANE = 'laa-learnings'
+const RETRO = '/laa:retro'
 
 const denial = (repo: Repo, what: string) =>
   `laa: ${what} on the default branch \`${repo.branch}\` of ${repo.top} is blocked. ` +
@@ -134,6 +136,14 @@ async function startEvolve($: Engine) {
   $.ui.toast(filled.isFilled ? 'laa: /laa:evolve is in the prompt. Press Enter to run it.' : 'laa: type /laa:evolve to run it.')
 }
 
+// Once per pipeline: propose /laa:retro as the prompt box's dim suggestion (Tab to take it).
+async function suggestRetro($: Engine) {
+  const p = await read($, pipeline)
+  if (!p || p.isNudged) return
+  const shown = await $.prompt.suggest({ text: RETRO })
+  if (shown.isShown) await update($, pipeline, q => (q ? { ...q, isNudged: true } : q))
+}
+
 export const register: Register = (on, options) => {
   const guard = String(options.guard ?? 'adopted')
 
@@ -182,6 +192,10 @@ export const register: Register = (on, options) => {
       if (repo) return blocked($, repo, 'Committing', 'a commit')
     }
     const ran = await next(e)
+    // A pipeline that committed has done work worth a retro.
+    if (dir !== null && !('deny' in ran) && !ran.isError) {
+      await update($, pipeline, p => (p ? { ...p, hasCommitted: true } : p))
+    }
     // Branch switches and commits change what the band shows; the model's next step sees it current.
     if (/\bgit\b/.test(e.command)) await refresh($)
     return ran
@@ -189,7 +203,32 @@ export const register: Register = (on, options) => {
 
   on('turn.complete', async ($, e, next) => {
     void refresh($)
+    const p = await read($, pipeline)
+    // Only the main loop's own answered turns; a suggestion is refused while the turn still runs, so wait for it to end.
+    if (!e.agentId && !e.isAborted && p && p.hasCommitted && !p.isNudged) {
+      void $.clock.after(400, () => void suggestRetro($))
+    }
     return next(e)
+  })
+
+  // A laa pipeline starting arms the nudge; the retro running disarms it.
+  on('skill.prompt', async ($, e, next) => {
+    const skill = laaSkillOf(e.text)
+    if (skill && PIPELINES.includes(skill)) {
+      await update($, pipeline, () => ({ skill, hasCommitted: false, isNudged: false }))
+    } else if (skill === 'retro') {
+      await update($, pipeline, () => null)
+    }
+    return next(e)
+  })
+
+  // When the engine proposes its own next prompt while the nudge is due, propose the retro instead.
+  on('prompt.suggest', async ($, e, next) => {
+    const p = await read($, pipeline)
+    if (e.origin.kind !== 'suggestion' || !p || !p.hasCommitted || p.isNudged) return next(e)
+    const shown = await next({ ...e, text: RETRO })
+    if (shown.isShown) await update($, pipeline, q => (q ? { ...q, isNudged: true } : q))
+    return shown
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
