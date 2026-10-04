@@ -5,5 +5,8 @@
   "author": {
     "name": "Lucas Almeida"
   },
+  "homepage": "https://github.com/LucasAntunesdeAlmeida/laa-claude#readme",
+  "repository": "https://github.com/LucasAntunesdeAlmeida/laa-claude",
+  "license": "MIT",
   "keywords": ["python", "fastapi", "django", "sqlalchemy", "backend"]
 }

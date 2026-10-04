@@ -5,6 +5,9 @@
   "author": {
     "name": "Lucas Almeida"
   },
+  "homepage": "https://github.com/LucasAntunesdeAlmeida/laa-claude#readme",
+  "repository": "https://github.com/LucasAntunesdeAlmeida/laa-claude",
+  "license": "MIT",
   "keywords": ["laa", "mods", "git", "guard"],
   "types": "./types/index.d.ts",
   "userConfig": {

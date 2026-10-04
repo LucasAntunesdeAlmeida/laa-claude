@@ -20,24 +20,31 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 
 **Stack packs** add language rules, and their reviewers join reviews of matching files. **Practice packs** add language-agnostic rules, and their reviewers join every review.
 
+## Requirements
+
+- [Claude Code](https://claude.com/claude-code) with plugin support.
+- On Windows, Git Bash: the hooks and scripts are POSIX `sh`.
+- Optional:
+  - the Workflow tool, for the fan-out workflows. Without it, the skills run the same agents through the Agent tool.
+  - a Claude Code build with mods (function hooks), for `laa-mods`.
+  - [graphify](#code-intelligence-graphify), for code-graph exploration.
+
 ## Install
 
-**Local (while developing this repo):**
+In Claude Code:
 ```
-/plugin marketplace add <path-to>/laa-claude
+/plugin marketplace add LucasAntunesdeAlmeida/laa-claude
 /plugin install laa@laa
 /plugin install laa-go@laa        # and/or laa-dotnet@laa, laa-python@laa, laa-js@laa
 /plugin install laa-git@laa       # and/or laa-docs@laa
 /plugin install laa-mods@laa      # optional: needs a Claude Code build with mods (function hooks)
 ```
-Quick test without installing: `claude --plugin-dir ./plugins/laa --plugin-dir ./plugins/laa-go`
-
-**From GitHub:** push this repo, then run `/plugin marketplace add <owner>/laa-claude`.
+Then run `/laa:adopt` in a repo to map it and set it up.
 
 **Per project, for the whole team:** commit this to `<project>/.claude/settings.json`. `/laa:adopt` does it for you.
 ```json
 {
-  "extraKnownMarketplaces": { "laa": { "source": { "source": "github", "repo": "<owner>/laa-claude" } } },
+  "extraKnownMarketplaces": { "laa": { "source": { "source": "github", "repo": "LucasAntunesdeAlmeida/laa-claude" } } },
   "enabledPlugins": { "laa@laa": true, "laa-go@laa": true }
 }
 ```
@@ -143,6 +150,21 @@ The guard's scope is the `guard` option in `/config`: `adopted` (default: repos 
 
 **Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it and `claude plugin test ./plugins/laa-mods` runs its tests. The mods API is early access and can change between Claude Code releases.
 
+## Developing this repo
+
+Install from a local clone:
+```
+/plugin marketplace add <path-to>/laa-claude
+/plugin install laa@laa
+```
+Or try plugins without installing: `claude --plugin-dir ./plugins/laa --plugin-dir ./plugins/laa-go`
+
+Validate the marketplace and each plugin you change:
+```
+claude plugin validate .
+claude plugin validate ./plugins/<plugin>
+```
+
 ## Evals
 
 ```
@@ -164,3 +186,16 @@ Copy `plugins/laa-go`, rename it, and write `skills/<stack>-conventions/SKILL.md
 ## Adding a practice pack
 
 Practice packs hold rules that don't depend on the language: git, docs, and future ones like API style or observability. Copy `plugins/laa-git`, rename it, and write `skills/<practice>-conventions/SKILL.md` and `agents/<practice>-reviewer.md`. The skill description must say when it applies (e.g. "when writing a commit message"), because nothing else triggers it. Register the pack in `.claude-plugin/marketplace.json`, and add its reviewer to the practice list in `plugins/laa/skills/review/SKILL.md` step 2.
+
+## Contributing
+
+Issues and PRs are welcome. Before opening a PR, read the authoring rules in [CLAUDE.md](CLAUDE.md). In short:
+- Work on a branch, never `main`.
+- A change to a skill, agent, or workflow prompt that changes behavior needs an eval case that fails before it and passes after it, plus a `version` bump in that plugin's `plugin.json`.
+- Stack-specific rules go in a stack pack, and language-agnostic ones in a practice pack, not in core.
+
+CI validates the marketplace and every plugin on each PR. Report security issues privately, as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE)

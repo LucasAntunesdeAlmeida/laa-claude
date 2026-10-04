@@ -6,5 +6,8 @@
   "author": {
     "name": "Lucas Almeida"
   },
+  "homepage": "https://github.com/LucasAntunesdeAlmeida/laa-claude#readme",
+  "repository": "https://github.com/LucasAntunesdeAlmeida/laa-claude",
+  "license": "MIT",
   "keywords": ["backend", "architecture", "workflows", "agents", "tech-lead"]
 }
