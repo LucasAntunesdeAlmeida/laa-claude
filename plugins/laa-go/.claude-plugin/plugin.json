@@ -1,0 +1,9 @@
+{
+  "name": "laa-go",
+  "version": "0.1.0",
+  "description": "Go stack pack for the laa toolkit: idiomatic conventions and a Go-specific reviewer.",
+  "author": {
+    "name": "Lucas Almeida"
+  },
+  "keywords": ["go", "golang", "backend"]
+}

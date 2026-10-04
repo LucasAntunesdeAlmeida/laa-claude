@@ -1,0 +1,52 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "laa",
+  "description": "Backend developer / tech lead / architect toolkit: fan-out agents, workflows, and self-improving skills.",
+  "owner": {
+    "name": "Lucas Almeida"
+  },
+  "plugins": [
+    {
+      "name": "laa",
+      "source": "./plugins/laa",
+      "description": "Core: /laa:explore, /laa:build, /laa:feature, /laa:fix, /laa:migrate, /laa:review, /laa:adopt, /laa:forge, /laa:retro, /laa:evolve + specialist agents, fan-out workflows, and hooks.",
+      "category": "development"
+    },
+    {
+      "name": "laa-go",
+      "source": "./plugins/laa-go",
+      "description": "Go stack pack: conventions skill and Go-specific reviewer.",
+      "category": "development"
+    },
+    {
+      "name": "laa-dotnet",
+      "source": "./plugins/laa-dotnet",
+      "description": ".NET / C# stack pack: conventions skill and .NET-specific reviewer.",
+      "category": "development"
+    },
+    {
+      "name": "laa-python",
+      "source": "./plugins/laa-python",
+      "description": "Python stack pack: conventions skill and Python-specific reviewer.",
+      "category": "development"
+    },
+    {
+      "name": "laa-js",
+      "source": "./plugins/laa-js",
+      "description": "JavaScript / TypeScript (Node.js) stack pack: conventions skill and JS/TS-specific reviewer.",
+      "category": "development"
+    },
+    {
+      "name": "laa-git",
+      "source": "./plugins/laa-git",
+      "description": "Git practice pack (any language): Conventional Commits, branch and PR conventions, and a history reviewer.",
+      "category": "development"
+    },
+    {
+      "name": "laa-docs",
+      "source": "./plugins/laa-docs",
+      "description": "Docs practice pack (any language): README and onboarding conventions, and a docs-drift reviewer.",
+      "category": "development"
+    }
+  ]
+}

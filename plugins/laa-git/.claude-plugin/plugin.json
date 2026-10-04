@@ -1,0 +1,9 @@
+{
+  "name": "laa-git",
+  "version": "0.1.0",
+  "description": "Git practice pack for the laa toolkit: commit, branch, and PR conventions plus a history reviewer. Works with any language.",
+  "author": {
+    "name": "Lucas Almeida"
+  },
+  "keywords": ["git", "conventional-commits", "pull-requests"]
+}
