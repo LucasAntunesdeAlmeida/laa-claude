@@ -32,6 +32,7 @@ If the code under review isn't checked out:
 - Practice reviewers for the installed practice packs. These don't depend on the language, so they join every review:
   - `laa-git:git-reviewer`: commit messages, breaking-change markers, commit shape, and files that shouldn't be committed.
   - `laa-docs:docs-reviewer`: README and onboarding docs drift (commands, env vars, ports, versions).
+  - `laa-docker:docker-reviewer`: local-environment drift (new service dependencies without a compose service, unpinned images, version drift between compose, CI, and tests).
 - `laa:platform-engineer` when the diff touches Dockerfiles, CI pipelines, Terraform, or Kubernetes/Helm manifests.
 
 ## 3. Run the panel

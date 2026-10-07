@@ -22,7 +22,7 @@ If there are no real signals, say so and stop. Don't invent learnings.
 ## 2. Classify each one
 - **scope**:
   - `local`: specific to this repo. It goes to repo-local assets: `CLAUDE.md`, `.claude/skills`, `.claude/agents`, `project-map.md`.
-  - `generic`: it would help in any repo. It goes to the laa toolkit itself: a laa skill, agent, workflow, stack pack, or practice pack (`laa-git`, `laa-docs`).
+  - `generic`: it would help in any repo. It goes to the laa toolkit itself: a laa skill, agent, workflow, stack pack, or practice pack (`laa-git`, `laa-docs`, `laa-docker`).
 - **target**: the exact asset that should change, for example `laa:fix step 2`, `.claude/skills/add-endpoint`, `project-map.md#testing`, or `laa-go:go-conventions`.
 
 ## 3. Append to `.claude/laa/learnings.md`
