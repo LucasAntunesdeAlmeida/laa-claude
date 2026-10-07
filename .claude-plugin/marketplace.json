@@ -49,6 +49,12 @@
       "category": "development"
     },
     {
+      "name": "laa-docker",
+      "source": "./plugins/laa-docker",
+      "description": "Docker practice pack (any language): dependencies, tests, and debugging in containers when Docker is available, and a local-environment drift reviewer.",
+      "category": "development"
+    },
+    {
       "name": "laa-mods",
       "source": "./plugins/laa-mods",
       "description": "Mods (TypeScript function hooks): blocks edits and commits on the default branch, shows branch, open learnings, and project-map age above the prompt, a pane to triage open learnings, and a /laa:retro nudge when a pipeline ends.",
