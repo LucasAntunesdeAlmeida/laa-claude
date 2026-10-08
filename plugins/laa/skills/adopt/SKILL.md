@@ -8,11 +8,14 @@ argument-hint: "[focus area]"
 
 Focus (optional): $ARGUMENTS
 
+## Output
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 0–5), ask every ★ gate as a gate card, and end with the closing report and **Next**.
+
 ## Running the workflows
 Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:
 1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
 2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type` and its `model` values as `model`, reuse its prompts, and set `isolation: "worktree"` where the script does.
-3. Say in one line which mode you're using.
+3. Name the mode in the mode line (`workflow mode` or `agent mode`).
 
 ## Git: branch first
 Everything this skill writes (`.claude/`, `CLAUDE.md`, generated assets) goes on a branch:
@@ -74,8 +77,8 @@ Merge into `.claude/settings.json` (create it if needed, and preserve existing k
 Enable the stack packs that match the detected stack: `laa-go` (Go), `laa-dotnet` (.NET), `laa-python` (Python), `laa-js` (JavaScript/TypeScript). A polyglot repo can enable several. Also offer the practice packs, which work in any repo: `laa-git` (commit, branch, and PR conventions), `laa-docs` (README and onboarding docs), `laa-docker` (Docker-first local development: dependencies, tests, and debugging in containers when Docker is available), and `laa-api` (API docs and tests: an OpenAPI contract plus a Bruno collection kept in sync with the code; offer it when the repo serves an HTTP API). They set team-wide rules, so ask before enabling them. To get the marketplace source, run `/plugin marketplace list` or ask the user. Never guess the GitHub owner.
 
 ## 4. Generate repo-specific assets
-Present the workflow's `recommendations` as a numbered list (kind, name, purpose, evidence, priority). Ask which to create (multi-select with **AskUserQuestion**, high-priority ones recommended).
+Present the workflow's `recommendations` as a numbered list (kind, name, purpose, evidence, priority). ★ Ask which to create as a gate card (multi-select with **AskUserQuestion**, high-priority ones recommended, plus **Stop**).
 For each approved item, follow the `laa:forge` skill to create it.
 
 ## 5. Report
-List the files created or changed and the branch they're committed on. Suggest opening a PR so the whole team benefits.
+End with the closing report: the files created or changed and the branch they're committed on. In **Next**, suggest opening a PR so the whole team benefits.

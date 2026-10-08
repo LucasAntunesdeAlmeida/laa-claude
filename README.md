@@ -58,17 +58,19 @@ You can type these directly, or just describe the task ("let's fix bug Z"). The 
 | Command | Use for | Fan-out |
 |---|---|---|
 | `/laa:explore <question>` | Understanding code: "how does X work", "what calls Y", "what breaks if I change Z" (read-only) | code graph lookup, or 2–4 explorers for broad questions → answer with `path:line` evidence |
-| `/laa:build <idea>` | New product or SaaS from zero | PRD → `design-panel` → ADRs → plan → walking skeleton → `adopt` → `implement-slices` per milestone → `review-panel` |
-| `/laa:feature <desc>` | A change in an existing repo | explorers → clarify → `design-panel` → slices → `implement-slices` → `review-panel` |
-| `/laa:fix <bug>` | Bugs and regressions | reproduce → `investigate` (5 angles) → verify → minimal fix → review |
+| `/laa:build <idea>` | New product or SaaS from zero | PRD ★ → `design-panel` → ADRs ★ → plan ★ → walking skeleton → `adopt` → `implement-slices` per milestone → `review-panel` ★ |
+| `/laa:feature <desc>` | A change in an existing repo | explorers → clarify → `design-panel` → slices ★ → `implement-slices` → `review-panel` |
+| `/laa:fix <bug>` | Bugs and regressions | reproduce → `investigate` (5 angles) → verify → root cause ★ (when unclear) → minimal fix → review |
 | `/laa:migrate <change>` | Large mechanical changes: Go/.NET/Python/Node upgrades, library swaps, renames | pilot → recipe ★ → `migrate-sites` finds sites ★ → batches in parallel worktrees → verify → sweep → `review-panel` |
 | `/laa:review [pr\|branch]` | Code review | `review-panel`: correctness, completeness, security, perf, infra, and stack reviewers, each finding adversarially verified |
-| `/laa:adopt` | First use in a repo | pick code-intelligence tool ★ → `map-repo` → project map + recommended repo-specific assets |
+| `/laa:adopt` | First use in a repo | pick code-intelligence tool → `map-repo` → project map → assets to create ★ |
 | `/laa:forge <need>` | Create one repo-specific agent, skill, workflow, or hook | evidence → template → smoke test → register |
 | `/laa:retro` | Capture learnings after work | — |
 | `/laa:evolve` | Turn learnings into approved diffs (local) or PRs with evals (upstream) | — |
 
 Every pipeline sizes itself to the task. Trivial bugs and small features skip the fan-out.
+
+**What you see:** every run follows one output contract ([`plugins/laa/references/output.md`](plugins/laa/references/output.md)). It opens with a mode line (`**laa:fix** · standard · workflow mode`), marks each step (`**▸ 3/7 · Investigate**`), asks each ★ gate as a card with **Approve**, **Revise**, and **Stop**, and closes with a `✓`, `✗`, or `▲` status line and a **Next** list.
 
 **Git:** in a git repo, every command that changes files works on a task branch (`fix/…`, `feat/…`, `migrate/…`, `chore/laa-…`). If your checkout has other uncommitted changes, it uses a git worktree instead of switching branches under them. Parallel agents always get their own worktrees. Nothing is committed to the default branch, and nothing is merged, pushed, or opened as a PR unless you ask.
 

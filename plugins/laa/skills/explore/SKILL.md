@@ -8,6 +8,9 @@ argument-hint: "<question>"
 
 Question: $ARGUMENTS
 
+## Output
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`'s style. Lead with the answer as step 4 says, and when there's a clear follow-up, end with **Next**. No mode or step lines; answers are short.
+
 This command is read-only. It doesn't need a branch and it changes no files. The one exception is refreshing a code graph's own output folder (step 2).
 
 ## 1. Find the code-intelligence tool

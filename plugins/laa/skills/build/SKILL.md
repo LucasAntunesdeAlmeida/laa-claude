@@ -8,13 +8,16 @@ argument-hint: <product idea>
 
 Idea: $ARGUMENTS
 
-This is the heaviest pipeline in the toolkit. Keep the user in the loop at every ★ gate. Never run past a gate without approval.
+This is the heaviest pipeline in the toolkit. Keep the user in the loop at every ★ gate, each asked as a gate card. Never run past a gate without approval.
+
+## Output
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (phases 1–6, as `▸ 2/6 · Architecture`), ask every ★ gate as a gate card, and end with the closing report and **Next**.
 
 ## Running the workflows
 Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:
 1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
 2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type` and its `model` values as `model`, reuse its prompts, and set `isolation: "worktree"` where the script does.
-3. Say in one line which mode you're using.
+3. Name the mode in the mode line (`workflow mode` or `agent mode`).
 
 ## Git: branches and worktrees
 - **New repo**: `git init`. Milestone 0 is the initial commit on the default branch, because a repo needs one commit to branch from.
@@ -69,4 +72,4 @@ For each milestone:
 5. Tick the milestone off in `docs/plan.md` and commit. Give a short status update. ★ **Gate: user approves merging the milestone into the default branch and continuing to the next one.**
 
 ## Phase 6: Close the loop
-Run the `laa:retro` skill. For a build this size, expect learnings both for the new repo (local) and for the toolkit itself (generic, such as a missing SaaS-essentials item or a weak prompt).
+Run the `laa:retro` skill, then end with the closing report: the milestones done, the default branch state, and **Next**. For a build this size, expect learnings both for the new repo (local) and for the toolkit itself (generic, such as a missing SaaS-essentials item or a weak prompt).

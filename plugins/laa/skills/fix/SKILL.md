@@ -8,11 +8,14 @@ argument-hint: <bug description, error, stack trace, or issue link>
 
 Bug: $ARGUMENTS
 
+## Output
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 0–7), ask every ★ gate as a gate card, and end with the closing report and **Next**.
+
 ## Running the workflows
 Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:
 1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
 2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type` and its `model` values as `model`, reuse its prompts, and set `isolation: "worktree"` where the script does.
-3. Say in one line which mode you're using.
+3. Name the mode in the mode line (`workflow mode` or `agent mode`).
 
 ## Git: branch or worktree first
 In a git repository, don't change files on the default branch (`main`/`master`, or whatever `origin/HEAD` points to). Before the first file change (the reproduction test counts):
@@ -28,7 +31,7 @@ Commit only on the work branch. Don't merge into the default branch, push, or op
 - If the bug description is an issue link or ID, fetch it (`gh issue view`, or whatever tracker tools are available).
 
 ## 1. Triage the size
-Decide which mode fits and say which one you picked in one line:
+Decide which size fits and put it in the mode line:
 - **Trivial** (obvious from the error: typo, wrong constant, missing null check at the reported line): fix it directly on the work branch, add a regression test, then go to step 6.
 - **Standard** (cause not obvious, or more than one plausible cause): go through all steps.
 - **Hard** (intermittent, concurrency, prod-only, or data-dependent): all steps, with `thorough: true` in step 3.
@@ -43,12 +46,12 @@ Call the **Workflow** tool with `name: "laa:investigate"` and
 Optionally narrow `angles` (defaults: recent-changes, data-flow, config-env, concurrency, data-state). Drop angles that clearly don't apply, such as concurrency for a pure function.
 
 ## 4. Decide
-Present the surviving root causes, ranked, each with its evidence and verification votes. If the top one is clearly confirmed, proceed. If the survivors conflict or all are uncertain, show the options and ask the user, or run the `howToConfirm` check yourself.
+Present the surviving root causes, ranked, each with its evidence and verification votes. If the top one is clearly confirmed, proceed. If the survivors conflict or all are uncertain, run the `howToConfirm` check yourself, or ★ ask which root cause to fix as a gate card (the causes are the options).
 
 ## 5. Fix
 - Apply the **minimal** fix at the root cause, not at the symptom. Follow the repo's conventions.
 - The reproduction test must now pass. Run the surrounding test suite too.
-- If the same flawed pattern exists elsewhere (`grep` for it), list those sites and ask whether to fix them in this change. Many sites across the repo is a job for `/laa:migrate`.
+- If the same flawed pattern exists elsewhere (`grep` for it), list those sites and ★ ask whether to fix them in this change, as a gate card. Many sites across the repo is a job for `/laa:migrate`.
 
 ## 6. Review
 For standard and hard bugs, call the **Workflow** tool with `name: "laa:review-panel"` and
@@ -56,5 +59,5 @@ For standard and hard bugs, call the **Workflow** tool with `name: "laa:review-p
 For trivial ones, a single `laa:reviewer` agent is enough. Address any confirmed findings, then commit on the work branch.
 
 ## 7. Close the loop
-- Summarize: root cause, fix, test added, the branch it's on, and anything left for follow-up. Offer to open a PR.
+- End with the closing report: root cause (`path:line`), fix, test added, branch, and follow-ups. In **Next**, offer to open a PR.
 - Run the **retro** step (the `laa:retro` skill): was this a bug *class* that could recur? If so, propose a prevention, such as a lint rule, a hook, a repo-local skill rule, or a test helper. Suggestions only; don't apply them without approval.

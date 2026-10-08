@@ -8,11 +8,14 @@ argument-hint: "[PR number | branch | base ref] [--thorough] [--fix]"
 
 Target: $ARGUMENTS
 
+## Output
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 1–4), ask every ★ gate as a gate card, and end with the closing report and **Next**.
+
 ## Running the workflows
 Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:
 1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
 2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type` and its `model` values as `model`, reuse its prompts, and set `isolation: "worktree"` where the script does.
-3. Say in one line which mode you're using.
+3. Name the mode in the mode line (`workflow mode` or `agent mode`).
 
 ## 1. Resolve the target
 - **PR number**: `gh pr view <n> --json baseRefName,headRefName,title,body`. Use the PR body as requirements.
@@ -42,6 +45,6 @@ Call the **Workflow** tool with `name: "laa:review-panel"` and
 `args: { base, target, workdir, requirements, extraReviewers, thorough: <true if --thorough or the diff touches auth/payments/migrations> }`.
 
 ## 4. Report
-Show the confirmed findings, most severe first, as `severity · file:line · issue · fix`, and mention how many were refuted. Say plainly if nothing survived.
+Show the confirmed findings in the findings format of the output contract, most severe first, with how many were refuted. If nothing survived, say so in a `**✓ No findings**` status line.
 
-If `--fix` was passed, apply the fixes for critical and high findings on the branch under review, rerun the tests, commit there, and summarize. Never apply them on the default branch. If you're reviewing uncommitted changes on the default branch, first create `fix/review-<short-slug>`, or use a worktree if unrelated changes are present.
+If `--fix` was passed, apply the fixes for critical and high findings on the branch under review, rerun the tests, commit there, and end with the closing report. Never apply them on the default branch. If you're reviewing uncommitted changes on the default branch, first create `fix/review-<short-slug>`, or use a worktree if unrelated changes are present.

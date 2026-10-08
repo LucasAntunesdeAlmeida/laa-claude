@@ -10,6 +10,9 @@ Request: $ARGUMENTS
 
 Templates and authoring rules are in `${CLAUDE_SKILL_DIR}/references/templates.md`. Read it before writing anything.
 
+## Output
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 1–5), ask every ★ gate as a gate card, and end with the closing report and **Next**.
+
 ## Git: branch first
 Assets are code, so they go on a branch:
 - **On the default branch**: `git switch -c chore/laa-<asset-name>` before writing.
@@ -33,6 +36,8 @@ Prefer the lightest kind that works: a CLAUDE.md line over a skill, a skill over
 Before writing, find the real patterns: 2–3 concrete examples in the repo (`path:line`), the exact commands, file locations, and naming. An asset without evidence is a guess. If you can't find evidence, say so and ask.
 
 ## 3. Write it
+Unless `laa:adopt` or `laa:evolve` already got approval for this asset, first ★ show its kind, name, path, and one-line purpose as a gate card.
+
 Use the template for that kind. Rules:
 - **Description = trigger.** State when to use it, with the phrases a user would say and the file areas involved.
 - Reference files by path. Don't paste large code, because it goes stale.
@@ -49,4 +54,4 @@ Fix what didn't work.
 
 ## 5. Register
 Append a row to `.claude/laa/assets.md`: `| name | kind | path | <today> | forge | <why + evidence ref> |`.
-Show the user the created files and the branch they're committed on.
+End with the closing report: the created files and the branch they're committed on, and in **Next**, how to try the asset.
