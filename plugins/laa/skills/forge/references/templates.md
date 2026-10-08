@@ -10,6 +10,7 @@ tools: Read, Grep, Glob, Bash          # add Edit, Write only if it must change 
 model: sonnet                          # opus for deep reasoning (design, root cause); haiku for mechanical work
 effort: medium                         # high when its output must be right (review, verification, root cause); low for mechanical work
 memory: project                        # keep if it should accumulate knowledge across sessions
+color: cyan                            # by role: cyan understand, blue design, green build, yellow investigate, purple review, red adversarial, orange infra, pink stack/practice reviewer
 ---
 
 You are the <role> for <area> in this repository.

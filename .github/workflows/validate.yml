@@ -27,13 +27,15 @@ jobs:
             claude plugin validate "./$p"
             echo "::endgroup::"
           done
-      - name: Check agents and workflow agents pin model and effort
+      - name: Check agents and workflow agents pin model, effort, and color
         run: |
           fail=0
           for f in plugins/*/agents/*.md; do
             for k in model effort; do
               grep -q "^$k: " "$f" || { echo "::error file=$f::agent frontmatter has no $k"; fail=1; }
             done
+            # Colors mark the agent's role family (see plugins/laa/references/output.md); these are the eight Claude Code accepts.
+            grep -Eq '^color: (red|blue|green|yellow|purple|orange|pink|cyan)$' "$f" || { echo "::error file=$f::agent frontmatter needs color: red, blue, green, yellow, purple, orange, pink, or cyan"; fail=1; }
           done
           # agent() options are one-line `{ label: ... }` literals; each needs an agentType or a model and an effort.
           grep -n "{ label:" plugins/*/workflows/*.js | grep -v "agentType:" \

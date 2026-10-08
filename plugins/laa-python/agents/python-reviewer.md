@@ -6,7 +6,7 @@ model: sonnet
 effort: medium
 skills:
   - laa-python:python-conventions
-color: yellow
+color: pink
 ---
 
 You review Python changes for problems that generic reviewers miss. Report only findings you can tie to a concrete failure, with `path:line`.

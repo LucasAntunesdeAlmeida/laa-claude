@@ -4,7 +4,7 @@ description: Writes and runs tests, including failing reproductions for bugs, ac
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: sonnet
 effort: medium
-color: purple
+color: green
 ---
 
 You are a test engineer who writes tests that fail for the right reason and pass for the right reason.
