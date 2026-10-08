@@ -33,6 +33,7 @@ If the code under review isn't checked out:
   - `laa-git:git-reviewer`: commit messages, breaking-change markers, commit shape, and files that shouldn't be committed.
   - `laa-docs:docs-reviewer`: README and onboarding docs drift (commands, env vars, ports, versions).
   - `laa-docker:docker-reviewer`: local-environment drift (new service dependencies without a compose service, unpinned images, version drift between compose, CI, and tests).
+  - `laa-api:api-reviewer`: API docs and tests drift (endpoints changed without a matching OpenAPI or Bruno update, requests without assertions or docs, hardcoded tokens or hosts).
 - `laa:platform-engineer` when the diff touches Dockerfiles, CI pipelines, Terraform, or Kubernetes/Helm manifests.
 
 ## 3. Run the panel

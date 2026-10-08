@@ -19,7 +19,7 @@ This repo is a Claude Code plugin marketplace (`.claude-plugin/marketplace.json`
   - The exception is `laa-mods`: TypeScript function hooks (mods). Nothing else may depend on it, because not every Claude Code build loads mods; core's `sh` hooks must keep working without it.
   - In a mod, every function that takes `$` is declared at the top of the hooks module (`register.tsx`), since `claude plugin validate` only follows `$` there. Pure helpers can live in other files.
   - Mod behavior changes need a `*.test.ts` case under `plugins/laa-mods/tests/` (run with `claude plugin test`) instead of an eval case, plus the version bump.
-- **Stack-specific knowledge** goes in a stack pack (`laa-go`, `laa-dotnet`, `laa-python`, `laa-js`), not in core. **Language-agnostic practices** (commit style, docs, local environment) go in a practice pack (`laa-git`, `laa-docs`, `laa-docker`). The only exception is the branch/worktree safety rule, which stays in core.
+- **Stack-specific knowledge** goes in a stack pack (`laa-go`, `laa-dotnet`, `laa-python`, `laa-js`), not in core. **Language-agnostic practices** (commit style, docs, local environment, API docs and tests) go in a practice pack (`laa-git`, `laa-docs`, `laa-docker`, `laa-api`). The only exception is the branch/worktree safety rule, which stays in core.
 
 ## Git
 Work on a branch (`feat/…`, `fix/…`), or in a git worktree when the checkout has other uncommitted changes. Never commit directly to `main`.

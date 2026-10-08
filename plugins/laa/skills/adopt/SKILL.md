@@ -71,7 +71,7 @@ Merge into `.claude/settings.json` (create it if needed, and preserve existing k
   "enabledPlugins": { "laa@laa": true, "<stack-pack>@laa": true }
 }
 ```
-Enable the stack packs that match the detected stack: `laa-go` (Go), `laa-dotnet` (.NET), `laa-python` (Python), `laa-js` (JavaScript/TypeScript). A polyglot repo can enable several. Also offer the practice packs, which work in any repo: `laa-git` (commit, branch, and PR conventions), `laa-docs` (README and onboarding docs), and `laa-docker` (Docker-first local development: dependencies, tests, and debugging in containers when Docker is available). They set team-wide rules, so ask before enabling them. To get the marketplace source, run `/plugin marketplace list` or ask the user. Never guess the GitHub owner.
+Enable the stack packs that match the detected stack: `laa-go` (Go), `laa-dotnet` (.NET), `laa-python` (Python), `laa-js` (JavaScript/TypeScript). A polyglot repo can enable several. Also offer the practice packs, which work in any repo: `laa-git` (commit, branch, and PR conventions), `laa-docs` (README and onboarding docs), `laa-docker` (Docker-first local development: dependencies, tests, and debugging in containers when Docker is available), and `laa-api` (API docs and tests: an OpenAPI contract plus a Bruno collection kept in sync with the code; offer it when the repo serves an HTTP API). They set team-wide rules, so ask before enabling them. To get the marketplace source, run `/plugin marketplace list` or ask the user. Never guess the GitHub owner.
 
 ## 4. Generate repo-specific assets
 Present the workflow's `recommendations` as a numbered list (kind, name, purpose, evidence, priority). Ask which to create (multi-select with **AskUserQuestion**, high-priority ones recommended).

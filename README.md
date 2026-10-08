@@ -17,6 +17,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 | `laa-git` | Practice pack, any language: git conventions skill (Conventional Commits, branches, history, PRs) + `git-reviewer` agent |
 | `laa-docs` | Practice pack, any language: README/onboarding conventions skill + `docs-reviewer` agent (catches docs drift) |
 | `laa-docker` | Practice pack, any language: Docker-first local development skill (dependencies, tests, and debugging in containers when Docker is available) + `docker-reviewer` agent (catches local-environment drift) |
+| `laa-api` | Practice pack, any language: API docs and tests skill (OpenAPI as the contract, a Bruno collection as runnable examples and tests, run in CI) + `api-reviewer` agent (catches drift between code, spec, and collection) |
 | `laa-mods` | Mods (TypeScript function hooks): a default-branch guard, a status band above the prompt, a learnings triage pane, and a `/laa:retro` nudge. Opt-in, see [Mods](#mods-laa-mods) |
 
 **Stack packs** add language rules, and their reviewers join reviews of matching files. **Practice packs** add language-agnostic rules, and their reviewers join every review.
@@ -37,7 +38,7 @@ In Claude Code:
 /plugin marketplace add LucasAntunesdeAlmeida/laa-claude
 /plugin install laa@laa
 /plugin install laa-go@laa        # and/or laa-dotnet@laa, laa-python@laa, laa-js@laa
-/plugin install laa-git@laa       # and/or laa-docs@laa, laa-docker@laa
+/plugin install laa-git@laa       # and/or laa-docs@laa, laa-docker@laa, laa-api@laa
 /plugin install laa-mods@laa      # optional: needs a Claude Code build with mods (function hooks)
 ```
 Then run `/laa:adopt` in a repo to map it and set it up.
@@ -186,7 +187,7 @@ Copy `plugins/laa-go`, rename it, and write `skills/<stack>-conventions/SKILL.md
 
 ## Adding a practice pack
 
-Practice packs hold rules that don't depend on the language: git, docs, and future ones like API style or observability. Copy `plugins/laa-git`, rename it, and write `skills/<practice>-conventions/SKILL.md` and `agents/<practice>-reviewer.md`. The skill description must say when it applies (e.g. "when writing a commit message"), because nothing else triggers it. Register the pack in `.claude-plugin/marketplace.json`, and add its reviewer to the practice list in `plugins/laa/skills/review/SKILL.md` step 2.
+Practice packs hold rules that don't depend on the language: git, docs, Docker, API docs and tests, and future ones like observability. Copy `plugins/laa-git`, rename it, and write `skills/<practice>-conventions/SKILL.md` and `agents/<practice>-reviewer.md`. The skill description must say when it applies (e.g. "when writing a commit message"), because nothing else triggers it. Register the pack in `.claude-plugin/marketplace.json`, and add its reviewer to the practice list in `plugins/laa/skills/review/SKILL.md` step 2.
 
 ## Contributing
 
