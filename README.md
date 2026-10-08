@@ -169,6 +169,29 @@ The guard's scope is the `guard` option in `/config`: `adopted` (default: repos 
 
 **Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it and `claude plugin test ./plugins/laa-mods` runs its tests. The mods API is early access and can change between Claude Code releases.
 
+## Spinner tips (optional)
+To learn the toolkit while Claude works, add these to `~/.claude/settings.json`. They join Claude Code's own tips under a `laa` label, and each waits three sessions before it shows again. Tip objects and `label` only work from user settings; project settings take plain strings only.
+```json
+{
+  "spinnerTipsOverride": {
+    "label": "laa",
+    "tips": [
+      { "id": "laa-help", "text": "/laa-help lists every laa command by job and says what to run next here", "cooldownSessions": 3, "priority": 2 },
+      { "id": "laa-resume", "text": "/laa:resume picks a stopped pipeline up at its last gate, even after /clear", "cooldownSessions": 3 },
+      { "id": "laa-findings", "text": "/laa-findings opens the last review's findings in a pane: Fix, Dismiss, or f to fix every HIGH", "cooldownSessions": 3 },
+      { "id": "laa-review-thorough", "text": "/laa:review --thorough runs three skeptics per finding; use it for auth, payments, and migrations", "cooldownSessions": 3 },
+      { "id": "laa-review-fix", "text": "/laa:review --fix applies the CRIT and HIGH fixes on the branch under review", "cooldownSessions": 3 },
+      { "id": "laa-design-panel", "text": "/laa:design-panel <requirements> runs the architecture judge panel on its own", "cooldownSessions": 3 },
+      { "id": "laa-migrate", "text": "/laa:migrate pilots one site, gets the recipe approved, then changes the rest in parallel worktrees", "cooldownSessions": 3 },
+      { "id": "laa-explore", "text": "/laa:explore answers how the code works with path:line evidence, and changes nothing", "cooldownSessions": 3 },
+      { "id": "laa-learnings", "text": "/laa-learnings triages open learnings in a pane; e puts /laa:evolve in the prompt", "cooldownSessions": 3 },
+      { "id": "laa-allow-main", "text": "/laa-allow-main lets you edit the default branch on purpose, for this session only", "cooldownSessions": 5 },
+      { "id": "laa-band-mute", "text": "ctrl+x tab focuses the laa band; m mutes the project map nudge for this repo", "cooldownSessions": 5 }
+    ]
+  }
+}
+```
+
 ## Developing this repo
 
 Install from a local clone:
