@@ -1,6 +1,6 @@
 ---
 name: docs-conventions
-description: Conventions for a repo's README and onboarding docs (CONTRIBUTING, getting-started, .env.example). Use when writing, updating, or reviewing a README or onboarding guide, in any language, and whenever a change alters how to set up, configure, run, or test the project (commands, env vars, ports, prerequisites, versions). Also use for "write a README", "document how to run this", "update the docs", "onboarding guide". The repo's existing docs structure overrides these defaults.
+description: Conventions for a repo's README and onboarding docs (CONTRIBUTING, getting-started, .env.example). Use when writing, updating, or reviewing a README or onboarding guide, in any language, and whenever a change alters how to set up, configure, run, or test the project (commands, env vars, ports, prerequisites, versions), including when writing the commit message or PR for such a change, so the docs ship in the same commit. Also use for "write a README", "document how to run this", "update the docs", "onboarding guide". The repo's existing docs structure overrides these defaults.
 ---
 
 # README and onboarding conventions
