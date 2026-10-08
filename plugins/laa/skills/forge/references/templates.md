@@ -8,6 +8,7 @@ name: <kebab-name>
 description: <What it knows/does> for <area/paths>. Use when <triggers: tasks, phrases, file areas>.
 tools: Read, Grep, Glob, Bash          # add Edit, Write only if it must change files
 model: sonnet                          # opus for deep reasoning (design, root cause); haiku for mechanical work
+effort: medium                         # high when its output must be right (review, verification, root cause); low for mechanical work
 memory: project                        # keep if it should accumulate knowledge across sessions
 ---
 
@@ -64,7 +65,7 @@ export const meta = {
   description: '<one line: what it fans out over and what it returns>',
   whenToUse: '<when to run it>. args: { focus? } or plain text',
   phases: [
-    { title: 'Find', detail: '<how units are discovered>' },
+    { title: 'Find', detail: '<how units are discovered>', model: 'sonnet' },
     { title: 'Check', detail: 'one agent per unit' },
     { title: 'Verify', detail: 'a skeptic per finding' },
   ],
@@ -101,7 +102,7 @@ const VERDICT = {
 phase('Find')
 const found = await agent(
   `List every <unit> in this repo${input.focus ? ` related to: ${input.focus}` : ''}. <Exact paths or patterns to search>.`,
-  { label: 'find', schema: UNITS })
+  { label: 'find', model: 'sonnet', effort: 'low', schema: UNITS })
 const units = found ? found.units : []
 log(`${units.length} unit(s) to check`)
 
@@ -124,6 +125,7 @@ Rules for workflows:
 - Give agents a `schema` whenever the script reads their output.
 - Use `isolation: 'worktree'` only for agents that edit files in parallel.
 - Reference repo agents by name (`billing-expert`) and laa agents as `laa:<name>`.
+- Every `agent()` call names an `agentType` (whose frontmatter sets the model) or sets `model` and `effort` itself. Otherwise it runs on whatever model and effort the session happens to use.
 - Scale the fan-out to the need, and `log()` anything skipped or capped.
 
 ## Hook (`.claude/settings.json` + `.claude/hooks/<name>.sh`)

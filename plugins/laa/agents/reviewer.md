@@ -3,6 +3,7 @@ name: reviewer
 description: Reviews a diff or branch for correctness bugs, missed requirements, convention violations, and maintainability, with verified, high-signal findings only. Use after implementation and before merge.
 tools: Read, Grep, Glob, Bash
 model: opus
+effort: high
 memory: project
 color: magenta
 ---

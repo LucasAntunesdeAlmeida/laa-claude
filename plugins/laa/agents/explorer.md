@@ -3,6 +3,7 @@ name: explorer
 description: Maps an area of a codebase and returns a compact, file-referenced summary (entry points, data flow, conventions, risks). Use before designing, fixing, or reviewing anything non-trivial, and fan out one explorer per subsystem for large repos.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: medium
 memory: project
 color: cyan
 ---

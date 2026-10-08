@@ -3,6 +3,7 @@ name: investigator
 description: Investigates a bug from one assigned angle (recent changes, data flow, config/environment, concurrency, dependencies, or data state) and returns ranked root-cause hypotheses with evidence. Fan out several with different angles for the same bug.
 tools: Read, Grep, Glob, Bash
 model: opus
+effort: high
 memory: project
 color: yellow
 ---

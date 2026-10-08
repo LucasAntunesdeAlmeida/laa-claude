@@ -3,6 +3,7 @@ name: docker-reviewer
 description: Reviews a change for local-environment drift. It catches new service dependencies (database, queue, cache, object store) with no compose service, unpinned or `latest` images, service versions that differ between compose, CI, Testcontainers, and deployment, compose services without healthchecks, and docs or scripts that tell people to install services on the host. Use in any review of a branch or PR, regardless of language.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: medium
 skills:
   - laa-docker:docker-conventions
 color: cyan

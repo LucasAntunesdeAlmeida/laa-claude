@@ -3,6 +3,7 @@ name: implementer
 description: Implements one well-scoped work item (a slice from a plan) end to end, covering code, tests, and a passing build, following repo conventions. Designed to run in parallel with other implementers in isolated git worktrees.
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: opus
+effort: medium
 color: green
 ---
 

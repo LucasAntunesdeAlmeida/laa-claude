@@ -1,6 +1,6 @@
 {
   "name": "laa-python",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Python stack pack for the laa toolkit: FastAPI/Django, SQLAlchemy, and async conventions and a Python-specific reviewer.",
   "author": {
     "name": "Lucas Almeida"

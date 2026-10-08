@@ -3,6 +3,7 @@ name: platform-engineer
 description: Designs, writes, and reviews infrastructure and delivery, covering Dockerfiles, CI/CD pipelines (GitHub Actions, Azure DevOps, GitLab), Terraform, Kubernetes/Helm, and observability (OpenTelemetry, metrics, logs, alerts, SLOs). Use when a design needs a deployment plan, when scaffolding Docker/CI/IaC, or when a diff touches infra files.
 tools: Read, Grep, Glob, Bash, Edit, Write, WebFetch
 model: opus
+effort: medium
 color: orange
 ---
 

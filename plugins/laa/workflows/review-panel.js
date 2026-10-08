@@ -92,7 +92,7 @@ const results = await pipeline(DIMENSIONS,
     return parallel(fresh.map(f => () =>
       parallel(Array.from({ length: votesPer }, (_, v) => () =>
         spawn(`${scope}\n\nCLAIMED ISSUE (${f.severity}) at ${f.file}:${f.line}: ${f.title}\nSCENARIO: ${f.scenario}\n\nTry to REFUTE it.`,
-          { label: `verify:${f.file.split('/').pop()}:${f.line}${votesPer > 1 ? `#${v + 1}` : ''}`, phase: 'Verify', agentType: 'laa:verifier', schema: VERDICT })))
+          { label: `verify:${f.file.split('/').pop()}:${f.line}${votesPer > 1 ? `#${v + 1}` : ''}`, phase: 'Verify', agentType: 'laa:verifier', ...(input.thorough && { effort: 'xhigh' }), schema: VERDICT })))
         .then(vs => {
           const votes = vs.filter(Boolean)
           const refuted = votes.filter(v => v.verdict === 'refuted').length

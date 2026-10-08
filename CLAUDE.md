@@ -5,10 +5,12 @@ This repo is a Claude Code plugin marketplace (`.claude-plugin/marketplace.json`
 ## Authoring rules
 - **Description = trigger.** Skills and agents are chosen from their `description` alone. Include the user phrases and situations that should trigger them.
 - **Agents are leaves.** They do one job and return. Orchestration lives in skills (main session) and workflows. Don't write agents that delegate.
+- **Agents pin `model` and `effort`** in frontmatter, so they don't depend on the session's settings. Use `opus` for design, root cause, and review, and `sonnet` for narrower or mechanical work. Use `effort: high` where the output must be right (review, verification, root cause, design) and `medium` otherwise. Skills don't set either, so the user's choice drives the main session.
 - **Workflows** (`plugins/laa/workflows/*.js`):
   - They're plain JS with `export const meta` as a pure literal.
   - No `Date.now()`, `Math.random()`, or Node APIs.
   - Reference plugin agents as `agentType: 'laa:<agent>'` through the `spawn()` fallback helper at the top of each file.
+  - An `agent()` call without an `agentType` sets `model` and `effort` itself (and the phase entry in `meta` gets the `model`).
   - Default to `pipeline()`. Use a barrier only when a stage needs every result, and say why in a comment.
   - Accept both an args object (from skills) and plain text (typed as `/laa:<workflow> <text>`) through the `fromText()` helper.
 - **Skills** name workflows by their namespaced name (`laa:investigate`) and must keep the ★ approval gates.
