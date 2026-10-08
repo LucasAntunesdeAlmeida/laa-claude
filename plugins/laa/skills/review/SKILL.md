@@ -24,6 +24,7 @@ If the code under review isn't checked out:
 - **Uncommitted changes**: don't switch branches under them. Check it out in a new git worktree instead (`git fetch origin pull/<n>/head:pr-<n>` for a PR, then `git worktree add ../<repo>-review-<slug> <ref>`) and pass that path as `workdir`. Remove the worktree when the review is done.
 
 ## 2. Pick extra reviewers
+The panel always runs the core dimensions: correctness, completeness, security, and performance. This step only adds to them. When you list the panel, name both.
 - Stack reviewers for the installed stack packs that match the diff's files:
   - `.go` → `laa-go:go-reviewer`
   - `.cs`, `.csproj` → `laa-dotnet:dotnet-reviewer`

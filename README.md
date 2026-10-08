@@ -179,6 +179,7 @@ Cases live in `plugins/<plugin>/evals/<case>/prompt.md` + `graders/*.md`. Scaffo
 - **Fixture repos**: a `case.yaml` with `context.scaffold_script: fixture.sh` seeds the workspace with files and git state. The script runs only with `--scaffold`.
 - **Cross-plugin cases** (core behavior that depends on a pack, e.g. `/laa:review` picking up practice reviewers) live in the repo-level `evals/` and list their plugins in `plugins:`. The eval runner only loads plugins from inside the directory it was pointed at, so these can't sit inside one plugin.
 - Prefer `regex` and `file_exists` graders on a written file over an `llm` rubric on a long reply. Judges get noisy on long outputs.
+- A `tool_used: Skill` grader (`skill-fired.md`) only makes sense for a plain-language prompt, where it shows the skill was chosen. A prompt that types the command (`/laa:review ...`) loads the skill without a Skill tool call, so the grader fails every run. Leave it out of those cases.
 - Windows can't run cases that grant `Bash`, because there's no sandbox backend. Use WSL2 for those.
 
 ## Adding a stack pack
