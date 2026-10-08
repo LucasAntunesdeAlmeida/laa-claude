@@ -18,7 +18,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 | `laa-docs` | Practice pack, any language: README/onboarding conventions skill + `docs-reviewer` agent (catches docs drift) |
 | `laa-docker` | Practice pack, any language: Docker-first local development skill (dependencies, tests, and debugging in containers when Docker is available) + `docker-reviewer` agent (catches local-environment drift) |
 | `laa-api` | Practice pack, any language: API docs and tests skill (OpenAPI as the contract, a Bruno collection as runnable examples and tests, run in CI) + `api-reviewer` agent (catches drift between code, spec, and collection) |
-| `laa-mods` | Mods (TypeScript function hooks): a default-branch guard, a status band above the prompt, a learnings triage pane, and a `/laa:retro` nudge. Opt-in, see [Mods](#mods-laa-mods) |
+| `laa-mods` | Mods (TypeScript function hooks): a default-branch guard, a pipeline tracker above the prompt, `/laa-help`, panes for learnings and review findings, and next-step suggestions. Opt-in, see [Mods](#mods-laa-mods) |
 
 **Stack packs** add language rules, and their reviewers join reviews of matching files. **Practice packs** add language-agnostic rules, and their reviewers join every review.
 
@@ -138,7 +138,7 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
 
 - **Default-branch guard**: refuses Edit, Write, and NotebookEdit on files tracked in a repo whose default branch is checked out, and refuses `git commit` there. The default branch is `origin/HEAD`, or `main`/`master` without a remote. It lets through:
   - a repo with no commits yet, whose first commit has nothing to branch from;
-  - files git ignores, and files outside the repo.
+  - files git ignores, laa's local state (`.claude/laa/local/`), and files outside the repo.
 
   The refusal tells Claude to create a task branch or a worktree, and a toast shows it on screen. To work on the default branch on purpose, type `/laa-allow-main`, which allows it for the session; type it again to block again.
 - **Learnings pane**: `/laa-learnings [repo path]` opens a pane listing the open entries of `.claude/laa/learnings.md`: title, scope, kind, target, signal, and proposal.
@@ -146,11 +146,24 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
   - **Evolve** (hotkey `e`) puts `/laa:evolve` in the prompt for you to send.
 
   Nothing else changes from the pane: evolve still shows every diff for approval.
-- **Retro nudge**: after a `/laa:fix`, `/laa:feature`, `/laa:migrate`, or `/laa:build` that committed something, the prompt box suggests `/laa:retro` (Tab to take it).
+- **Status band**, above the prompt in adopted repos. It shows at most one alarm, in the theme's own colors, and refreshes after each turn and each git command:
+  - the branch, with `✗ main · edits blocked` when the guard is blocking the default branch;
+  - the laa run in progress: `● laa:fix ▸ 3/7 Investigate · engine investigate`, or `★ laa:feature · waiting on you: Approve the plan?` at a gate. It reads the mode, step, and gate lines of the output contract, AskUserQuestion gates, and Workflow calls;
+  - a pipeline that stopped on this branch, from its journal: `○ paused laa:feature ▸ 5/8 Plan slices → /laa:resume`;
+  - open high review findings (`→ /laa-findings`), open learnings (`→ /laa:evolve` at 3 or more), and a missing or stale project map (`→ /laa:adopt` at 50+ commits).
+
+  The map nudge has a **mute** button (hotkey `m`, after ctrl+x tab focuses the band). It mutes the nudge for that repo, until the map goes 100 commits stale.
+- **Footer label**: the prompt footer's mode labels show the run too, as `laa:fix 3/7` or `laa:feature ★`.
+- **`/laa-help`**: every laa command grouped by job (Understand, Change, Check, Continue, Set up, Learn), the engines, this repo's state, and the one command worth running next. It answers instantly, with no model turn.
+- **Findings pane**: `/laa-findings [repo path]` lists the open findings `/laa:review` saved to `.claude/laa/local/last-review.md`.
+  - **Fix** puts a self-contained fix request in the prompt for you to send, and **Fix all CRIT and HIGH** (hotkey `f`) does the same for every high finding.
+  - **Dismiss** marks a finding `status: dismissed`.
+- **Next step**: when a laa run's closing report has a laa command in its **Next** list, the prompt box suggests the first one (Tab to take it), once.
+- **Retro nudge**: after a `/laa:fix`, `/laa:feature`, `/laa:migrate`, or `/laa:build` that committed something, the prompt box suggests `/laa:retro` instead.
   - It shows once per pipeline, and never if the retro already ran.
   - It stays quiet at approval gates before the first commit.
   - It replaces Claude Code's own next-prompt guess only while the nudge is due.
-- **Status band**, above the prompt in adopted repos: the branch, open learnings (with `/laa:evolve` at 3 or more), and a missing or stale project map (50+ commits since it changed, with `/laa:adopt`). It refreshes after each turn and each git command.
+- **Learning logged**: when a turn adds entries to `.claude/laa/learnings.md`, through `/laa:retro` or a captured correction, a toast says how many it added, once, at the end of the turn.
 
 The guard's scope is the `guard` option in `/config`: `adopted` (default: repos with `.claude/laa/`), `always` (every git repo), or `off`.
 

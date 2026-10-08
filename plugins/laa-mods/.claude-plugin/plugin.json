@@ -1,7 +1,7 @@
 {
   "name": "laa-mods",
-  "version": "0.2.0",
-  "description": "Mods for the laa toolkit: blocks file changes and commits on the default branch, shows laa status above the prompt, a pane to triage open learnings, and a /laa:retro nudge when a pipeline ends.",
+  "version": "0.3.0",
+  "description": "Mods for the laa toolkit: blocks file changes and commits on the default branch, tracks the running laa pipeline above the prompt and in the footer, /laa-help, panes to triage learnings and review findings, and next-step suggestions.",
   "author": {
     "name": "Lucas Almeida"
   },

@@ -55,6 +55,13 @@ jobs:
           done
       - name: Test workflow reports
         run: node --test "plugins/laa/tests/*.test.mjs"
+      - name: Check /laa-help lists every laa skill
+        run: |
+          for d in plugins/laa/skills/*/; do
+            s=$(basename "$d")
+            grep -q "'/laa:$s" plugins/laa-mods/hooks/git.ts \
+              || { echo "::error file=plugins/laa-mods/hooks/git.ts::/laa-help (HELP) doesn't list /laa:$s"; exit 1; }
+          done
       - name: Check shared skill sections match
         run: |
           # CLAUDE.md: every skill that calls a workflow keeps the same "Running the workflows" section.

@@ -1,6 +1,7 @@
+import { mock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-// An invented repo at C:/r, faked beneath the plugin: git answers, the file system and the session's directory.
+// An invented repo at C:/r, faked beneath the plugin: git answers, the file system, the store, and the session's directory.
 export type Fake = {
   branch?: string | null
   hasCommits?: boolean
@@ -9,9 +10,13 @@ export type Fake = {
   ignored?: string[]
   learnings?: string
   mapAge?: number
+  // Other files in the repo, by their path relative to it.
+  files?: Record<string, string>
+  store?: Record<string, unknown>
 }
 
 export const ROOT = 'C:/r'
+const LEARNINGS = `${ROOT}/.claude/laa/learnings.md`
 // The engine hands paths to the fakes in the platform's spelling (C:\r on Windows).
 const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '')
 
@@ -19,21 +24,32 @@ export function fakeRepo(on: On, f: Fake = {}) {
   const branch = f.branch === undefined ? 'main' : f.branch
   const hasCommits = f.hasCommits ?? true
   const isAdopted = f.isAdopted ?? true
-  const files = new Set([ROOT, `${ROOT}/src`, 'C:/other'])
-  if (isAdopted) files.add(`${ROOT}/.claude/laa`)
-  if (f.learnings !== undefined) files.add(`${ROOT}/.claude/laa/learnings.md`)
-  if (f.mapAge !== undefined) files.add(`${ROOT}/.claude/laa/project-map.md`)
+  const dirs = new Set([ROOT, `${ROOT}/src`, 'C:/other'])
+  if (isAdopted) dirs.add(`${ROOT}/.claude/laa`)
+  if (f.mapAge !== undefined) dirs.add(`${ROOT}/.claude/laa/project-map.md`)
+  const texts = new Map<string, string>()
+  if (f.learnings !== undefined) texts.set(LEARNINGS, f.learnings)
+  for (const [path, text] of Object.entries(f.files ?? {})) texts.set(`${ROOT}/${path}`, text)
 
   const ok = (stdout = '') => ({ exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false })
   const fail = { ...ok(), exitCode: 1 }
 
+  mock.store(on, f.store)
   on('session.cwd', () => ({ value: ROOT }))
-  on('fs.exists', ($, e) => ({ value: files.has(norm(e.path)) }))
-  // learnings.md as the plugin last wrote it, and every toast it showed.
-  const seen = { learnings: f.learnings ?? '', toasts: [] as string[] }
-  on('fs.read', () => ({ value: seen.learnings }))
+  on('fs.exists', ($, e) => ({ value: dirs.has(norm(e.path)) || texts.has(norm(e.path)) }))
+  // The files as the plugin last wrote them, and every toast it showed.
+  const seen = {
+    get learnings() {
+      return texts.get(LEARNINGS) ?? ''
+    },
+    file: (path: string) => texts.get(`${ROOT}/${path}`) ?? '',
+    // What a tool the plugin let through would have written.
+    setFile: (path: string, text: string) => void texts.set(`${ROOT}/${path}`, text),
+    toasts: [] as string[],
+  }
+  on('fs.read', ($, e) => ({ value: texts.get(norm(e.path)) ?? '' }))
   on('fs.write', ($, e) => {
-    seen.learnings = e.text
+    texts.set(norm(e.path), e.text)
     return { value: undefined }
   })
   on('ui.toast', ($, e) => {
@@ -60,6 +76,7 @@ export function fakeRepo(on: On, f: Fake = {}) {
 }
 
 export const edit = (file_path: string) => ({ tool: 'Edit' as const, file_path, old_string: 'a', new_string: 'b' })
+export const write = (file_path: string, content = 'x') => ({ tool: 'Write' as const, file_path, content })
 // A plugin's deny reaches the engine's $.tool.call as { deny }; anything else means the tool ran.
 export const denied = (res: object) => 'deny' in res
 export const bash = (command: string) => ({ tool: 'Bash' as const, command })
@@ -69,3 +86,29 @@ export const allowMainRun = {
   origin: { kind: 'composer' as const },
   presentation: { isFullscreen: false, columns: 120 },
 }
+
+// A command run as the person typed it, in the fullscreen layout.
+export const commandRun = (command: string, args = '') => ({
+  command,
+  args,
+  origin: { kind: 'composer' as const },
+  presentation: { isFullscreen: true, columns: 160 },
+})
+
+// The model's reply as the session stores it: one assistant row of text.
+export const reply = (text: string, uuid = 'row-1') => ({
+  message: { type: 'assistant' as const, role: 'assistant' as const, content: [{ type: 'text' as const, text }] },
+  door: 'response' as const,
+  origin: { kind: 'model' as const, model: 'claude-test' },
+  uuid,
+})
+
+// The end of a main-loop turn that answered with `answer`.
+export const turnEnd = (answer: string, extra: { agentId?: string; isAborted?: boolean } = {}) => ({
+  answer,
+  durationMs: 1000,
+  isAborted: false,
+  turnId: 't1',
+  reason: 'answer' as const,
+  ...extra,
+})
