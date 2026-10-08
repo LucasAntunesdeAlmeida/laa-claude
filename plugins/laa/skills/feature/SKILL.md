@@ -9,7 +9,7 @@ argument-hint: <feature description or ticket link>
 Feature: $ARGUMENTS
 
 ## Output
-Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 0–8), ask every ★ gate as a gate card, and end with the closing report and **Next**.
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 0–8), ask every ★ gate as a gate card, and end with the closing report and **Next**. Keep the run's journal there too, at each gate and at the end.
 
 ## Running the workflows
 Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:

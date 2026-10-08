@@ -47,4 +47,13 @@ Call the **Workflow** tool with `name: "laa:review-panel"` and
 ## 4. Report
 Show the confirmed findings in the findings format of the output contract, most severe first, with how many were refuted. If nothing survived, say so in a `**✓ No findings**` status line.
 
+Then save them for the `/laa-findings` pane and later fixes: overwrite `.claude/laa/local/last-review.md` (see the output contract's local state) with
+```
+# Review · <target> against <base>
+## <CRIT|HIGH|MED|LOW> · <file>:<line> · <title>
+- fix: <fix>
+- status: open
+```
+one `## ` entry per confirmed finding. When a finding is fixed later (with `--fix` or on request), set its `status: fixed (<short sha>)`.
+
 If `--fix` was passed, apply the fixes for critical and high findings on the branch under review, rerun the tests, commit there, and end with the closing report. Never apply them on the default branch. If you're reviewing uncommitted changes on the default branch, first create `fix/review-<short-slug>`, or use a worktree if unrelated changes are present.

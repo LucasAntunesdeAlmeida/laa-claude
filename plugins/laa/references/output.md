@@ -57,3 +57,24 @@ When a workflow returns a `report`, print it as is, then add your own **Next**.
 
 ## Style
 Lead with the result. Numbers over adjectives. One bold phrase per line at most. No headings below `###`. Tables only for 3+ rows. Don't apologize or hype.
+
+## Local state
+`.claude/laa/local/` holds state that is never committed. When you first write there, create `.claude/laa/local/.gitignore` with the single line `*`.
+
+## Journal: pipelines that change files
+`/laa:fix`, `/laa:feature`, `/laa:migrate`, and `/laa:build` keep a journal, so `/laa:resume` can pick a run up after `/clear` or weeks later. Write it only once the work branch exists: at every ★ gate, and in the closing report step (with `status: done`).
+- Path: `.claude/laa/local/runs/<branch with / replaced by ->.md`, for example `.claude/laa/local/runs/feat-csv-export.md`.
+- Overwrite the whole file each time:
+```
+# laa:<skill> · <branch>
+- status: waiting | running | done
+- step: <n>/<last> · <Step title>
+- gate: ★ <question> | none
+- request: <the original request, one line>
+
+## Decisions
+- <decision>: <choice> (<why>)
+
+## Plan
+<the plan, recipe, or root cause as it stands; paths, not code>
+```

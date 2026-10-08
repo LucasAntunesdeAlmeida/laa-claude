@@ -11,7 +11,7 @@ Idea: $ARGUMENTS
 This is the heaviest pipeline in the toolkit. Keep the user in the loop at every ★ gate, each asked as a gate card. Never run past a gate without approval.
 
 ## Output
-Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (phases 1–6, as `▸ 2/6 · Architecture`), ask every ★ gate as a gate card, and end with the closing report and **Next**.
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (phases 1–6, as `▸ 2/6 · Architecture`), ask every ★ gate as a gate card, and end with the closing report and **Next**. Keep the run's journal there too, at each gate and at the end.
 
 ## Running the workflows
 Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:

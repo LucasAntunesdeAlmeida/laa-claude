@@ -65,6 +65,7 @@ You can type these directly, or just describe the task ("let's fix bug Z"). The 
 | `/laa:review [pr\|branch]` | Code review | `review-panel`: correctness, completeness, security, perf, infra, and stack reviewers, each finding adversarially verified |
 | `/laa:adopt` | First use in a repo | pick code-intelligence tool → `map-repo` → project map → assets to create ★ |
 | `/laa:forge <need>` | Create one repo-specific agent, skill, workflow, or hook | evidence → template → smoke test → register |
+| `/laa:resume [branch]` | Continue a pipeline after `/clear`, a compaction, or time away | reads `.claude/laa/local/runs/<branch>.md` → asks the pending ★ gate again → continues that pipeline |
 | `/laa:retro` | Capture learnings after work | — |
 | `/laa:evolve` | Turn learnings into approved diffs (local) or PRs with evals (upstream) | — |
 
@@ -102,6 +103,7 @@ Per-project state lives in `<project>/.claude/laa/`:
 - `project-map.md`: the codebase map every agent reads first
 - `learnings.md`: the retro log (`status: open | applied | rejected | upstreamed`)
 - `assets.md`: an inventory of generated assets and why each one exists
+- `local/`: state that is never committed (it ignores itself): `runs/<branch>.md`, the journal `/laa:resume` reads, and `last-review.md`, the findings the `/laa-findings` pane lists
 
 Several agents (`explorer`, `reviewer`, `investigator`, `security-reviewer`) also keep persistent **project memory** across sessions.
 
