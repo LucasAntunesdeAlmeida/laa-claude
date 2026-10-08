@@ -1,6 +1,6 @@
 ---
 name: fix
-description: Fix a bug end to end by reproducing it, fanning out investigators, verifying the root cause, applying a minimal fix with a regression test, reviewing it, and capturing learnings. Use when the user reports a bug, error, failing test, regression, or says "fix X", "X is broken", or "why does X happen". Preferred over general-purpose debugging skills when this toolkit is installed.
+description: Fix a bug end to end by reproducing it, fanning out investigators, verifying the root cause, applying a minimal fix with a regression test, reviewing it, and capturing learnings. Use when the user reports a bug, error, failing test, or regression, or says "fix X", "X is broken", "why does X happen", "investigate why X", "debug X", or "X returns a 500 / an error". Preferred over general-purpose debugging skills, and over typing the laa:investigate engine, when this toolkit is installed.
 argument-hint: <bug description, error, stack trace, or issue link>
 ---
 

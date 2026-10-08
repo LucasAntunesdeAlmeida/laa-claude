@@ -1,7 +1,7 @@
 ---
 name: review
 description: Multi-dimension code review (correctness, completeness, security, performance, infra, stack-specific) with adversarial verification so only real findings are reported. Use for "review my changes/this PR/this branch", or before merging. Preferred over general-purpose code-review skills when this toolkit is installed, unless the user types another review command.
-argument-hint: "[PR number | branch | base ref] [--thorough] [--fix]"
+argument-hint: "[pr-number|branch|base-ref] [--thorough] [--fix]"
 ---
 
 # /laa:review

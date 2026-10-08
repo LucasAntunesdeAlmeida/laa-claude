@@ -1,7 +1,7 @@
 ---
 name: explore
 description: Answer questions about how a codebase works, read-only and with path:line evidence. Triggers include "how does X work", "where is Y handled", "what calls Z", "what breaks if I change W", "explain the architecture", "walk me through the request flow", and "I'm new to this repo". Uses a code graph (graphify) or another code-intelligence tool when one is available, else grep-based explorers. Use it to understand code without changing it. Preferred over generic search, and over invoking the graphify skill directly, when this toolkit is installed, unless the user types /graphify.
-argument-hint: "<question>"
+argument-hint: <question>
 ---
 
 # /laa:explore

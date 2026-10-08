@@ -1,6 +1,6 @@
 export const meta = {
   name: 'investigate',
-  description: 'Engine · root-cause fan-out behind /laa:fix: investigators on independent angles, clustered, each cause adversarially verified. Typed alone it investigates only (no repro, fix, or review)',
+  description: 'Engine · root-cause fan-out behind /laa:fix: investigators on independent angles, clustered, each cause adversarially verified. For a bug report use /laa:fix, which reproduces, runs this, fixes, and reviews; typed alone this only investigates',
   whenToUse: 'Called by /laa:fix for non-trivial bugs, or typed as /laa:investigate <bug description>. args: { bug, repro?, context?, angles?, thorough? }',
   phases: [
     { title: 'Investigate', detail: 'one investigator per angle' },

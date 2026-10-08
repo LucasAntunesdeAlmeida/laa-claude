@@ -53,3 +53,20 @@ jobs:
           for t in plugins/*/scripts/tests/*.test.sh; do
             sh "$t" || { echo "::error file=$t::hook test failed"; exit 1; }
           done
+      - name: Test workflow reports
+        run: node --test "plugins/laa/tests/*.test.mjs"
+      - name: Check shared skill sections match
+        run: |
+          # CLAUDE.md: every skill that calls a workflow keeps the same "Running the workflows" section.
+          first=""
+          for f in plugins/laa/skills/*/SKILL.md; do
+            section=$(awk '/^## Running the workflows/{p=1;next} p&&/^## /{exit} p' "$f")
+            [ -n "$section" ] || continue
+            if [ -z "$first" ]; then
+              first=$f
+              ref=$section
+            elif [ "$section" != "$ref" ]; then
+              echo "::error file=$f::'Running the workflows' differs from $first"
+              exit 1
+            fi
+          done

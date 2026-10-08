@@ -1,7 +1,7 @@
 ---
 name: evolve
 description: Turn accumulated learnings into concrete, reviewed improvements. Repo-local learnings become diffs to this repo's CLAUDE.md, skills, and agents. Generic learnings become a PR to the laa-claude toolkit with an eval case. Every change is shown as a diff and needs approval. Use when the user runs /laa:evolve or accepts a retro suggestion to evolve.
-argument-hint: "[local | upstream | all]"
+argument-hint: "[local|upstream|all]"
 disable-model-invocation: true
 ---
 
