@@ -1,4 +1,7 @@
 **/evals/results/
 .claude/settings.local.json
+# Local working state from Claude sessions in this repo (agent memory, laa learnings)
+.claude/agent-memory/
+.claude/laa/
 # Type declarations Claude Code writes beside a mod when it loads it
 plugins/*/.claude-plugin/types/
