@@ -1,6 +1,6 @@
 export const meta = {
   name: 'migrate-sites',
-  description: 'Large mechanical change across a repo: find every site, change conflict-free batches in parallel worktrees following an approved recipe, and verify each batch',
+  description: 'Engine · site finder and batch transformer behind /laa:migrate. Typed alone it only finds the sites and plans batches',
   whenToUse: 'Called by /laa:migrate, or typed as /laa:migrate-sites <change> to only find the sites. args: { change, recipe?, verify?, discoverOnly?, batches?: [{ id, files, sites? }], base?, batchSize? }',
   phases: [
     { title: 'Discover', detail: 'two finders search in different ways' },
@@ -12,12 +12,19 @@ export const meta = {
 
 // Plugin agent types resolve as '<plugin>:<agent>'. If resolution fails (plugin renamed, older Claude Code),
 // fall back to a general-purpose agent told to follow that agent's role, so the workflow still completes.
+// Each fallback is recorded in `degraded` so the report says which specialists were missing.
+const degraded = []
 const spawn = (prompt, opts) => agent(prompt, opts).catch(err => {
   if (!opts.agentType) throw err
   log(`agentType ${opts.agentType} unavailable (${err.message}); falling back to default agent`)
+  if (!degraded.includes(opts.agentType)) degraded.push(opts.agentType)
   const { agentType, ...rest } = opts
   return agent(`Act as the ${agentType.split(':').pop()} specialist from the laa toolkit.\n\n${prompt}`, rest)
 })
+
+// The Markdown report every workflow returns: one line per entry, plus a note when specialists fell back.
+const render = lines => lines.join('\n') +
+  (degraded.length ? `\n\n**▲ Degraded** · ${degraded.join(', ')} unavailable; generic agents stood in` : '')
 
 // Skills pass args as an object. Typing `/laa:<workflow> <text>` passes plain text instead (and an
 // object sometimes arrives JSON-encoded), so accept all three.
@@ -120,7 +127,16 @@ if (!batches || !batches.length) {
     sites: files.flatMap(f => byFile.get(f)),
   }))
   log(`${byFile.size} file(s) with sites, packed into ${batches.length} batch(es) of up to ${batchSize} files`)
-  if (input.discoverOnly || !batches.length) return { change: input.change, siteCount: batches.reduce((n, b) => n + b.sites.length, 0), batches }
+  if (input.discoverOnly || !batches.length) {
+    const siteCount = batches.reduce((n, b) => n + b.sites.length, 0)
+    const report = render(batches.length
+      ? [
+        `**${siteCount} sites in ${byFile.size} files** · ${batches.length} batches of up to ${batchSize} files`,
+        ...batches.map(b => `- \`${b.id}\` ${b.files.length} files: ${b.files.slice(0, 3).join(', ')}${b.files.length > 3 ? ', …' : ''}`),
+      ]
+      : ['**✓ No sites found** · nothing left to migrate'])
+    return { change: input.change, siteCount, batches, report, degraded }
+  }
 }
 
 const results = await pipeline(batches,
@@ -157,4 +173,15 @@ const ok = r => r.impl && r.impl.status === 'done' && r.check &&
   (r.check.verdict !== 'refuted' || (r.fix && r.fix.status === 'done'))
 const needsAttention = summary.filter(r => !ok(r)).map(r => r.batch)
 if (needsAttention.length) log(`Batches needing attention: ${needsAttention.join(', ')}`)
-return { change: input.change, base, results: summary, needsAttention }
+
+const reason = r => !r.impl || r.impl.status !== 'done' ? 'blocked'
+  : !r.check ? 'unverified'
+    : r.fix ? 'unfixed' : 'refuted'
+const n = summary.length
+const report = render([
+  needsAttention.length
+    ? `**▲ ${n - needsAttention.length}/${n} batches verified** · needs attention: ${needsAttention.join(', ')}`
+    : `**✓ ${n}/${n} batches verified**`,
+  ...summary.map((r, i) => ok(r) ? `- ✓ \`${r.impl.branch}\` ${batches[i].files.length} files` : `- ✗ ${r.batch} ${reason(r)}`),
+])
+return { change: input.change, base, results: summary, needsAttention, report, degraded }

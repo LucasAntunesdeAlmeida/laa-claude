@@ -1,6 +1,6 @@
 export const meta = {
   name: 'map-repo',
-  description: 'Map a repository in parallel (one explorer per subsystem), synthesize a project map, and recommend repo-specific agents/skills/hooks',
+  description: 'Engine · parallel repo mapping behind /laa:adopt: one explorer per subsystem, then a project map and recommended repo-specific assets',
   whenToUse: 'Called by /laa:adopt, or typed as /laa:map-repo [focus]. args: { areas?: [{ name, paths }], focus?, codeIntel? }',
   phases: [
     { title: 'Scout', detail: 'identify subsystems', model: 'sonnet' },
@@ -11,12 +11,19 @@ export const meta = {
 
 // Plugin agent types resolve as '<plugin>:<agent>'. If resolution fails (plugin renamed, older Claude Code),
 // fall back to a general-purpose agent told to follow that agent's role, so the workflow still completes.
+// Each fallback is recorded in `degraded` so the report says which specialists were missing.
+const degraded = []
 const spawn = (prompt, opts) => agent(prompt, opts).catch(err => {
   if (!opts.agentType) throw err
   log(`agentType ${opts.agentType} unavailable (${err.message}); falling back to default agent`)
+  if (!degraded.includes(opts.agentType)) degraded.push(opts.agentType)
   const { agentType, ...rest } = opts
   return agent(`Act as the ${agentType.split(':').pop()} specialist from the laa toolkit.\n\n${prompt}`, rest)
 })
+
+// The Markdown report every workflow returns: one line per entry, plus a note when specialists fell back.
+const render = lines => lines.join('\n') +
+  (degraded.length ? `\n\n**▲ Degraded** · ${degraded.join(', ')} unavailable; generic agents stood in` : '')
 
 // Skills pass args as an object. Typing `/laa:<workflow> <text>` passes plain text instead (and an
 // object sometimes arrives JSON-encoded), so accept all three.
@@ -103,4 +110,9 @@ const synth = await agent(
   '(format on edit, block edits to generated code), or CLAUDE.md rules. Every recommendation must cite evidence from the maps. Max 8, highest value first.',
   { label: 'synthesize', phase: 'Synthesize', model: 'sonnet', effort: 'high', schema: SYNTH })
 
-return { stack: scout.stack, commands: scout.commands || {}, ...synth }
+const TAG = { high: 'HIGH', medium: 'MED', low: 'LOW' }
+const report = render([
+  `**✓ Mapped ${scout.areas.length} areas** · ${scout.stack} · code intelligence: ${codeIntel}`,
+  ...((synth && synth.recommendations) || []).map(r => `- \`${TAG[r.priority]}\` ${r.kind} \`${r.name}\`: ${r.purpose}`),
+])
+return { stack: scout.stack, commands: scout.commands || {}, ...synth, report, degraded }
