@@ -48,3 +48,8 @@ jobs:
           git ls-files '*.sh' | while read -r f; do
             sh -n "$f" || { echo "::error file=$f::sh -n failed"; exit 1; }
           done
+      - name: Test hook scripts
+        run: |
+          for t in plugins/*/scripts/tests/*.test.sh; do
+            sh "$t" || { echo "::error file=$t::hook test failed"; exit 1; }
+          done
