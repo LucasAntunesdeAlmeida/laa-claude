@@ -1,12 +1,15 @@
 ---
 name: retro
-description: Capture learnings from the work just done (user corrections, wrong assumptions, missed steps, slow paths, patterns that worked) into .claude/laa/learnings.md, classified as repo-local or generic toolkit improvements. Use at the end of /laa:fix, /laa:feature, /laa:build, after any session where the user corrected Claude, or when the user says "retro" or "what did we learn".
+description: Capture learnings from the work just done (user corrections, wrong assumptions, missed steps, slow paths, patterns that worked) into .claude/laa/learnings.md, classified as repo-local or generic toolkit improvements. Use at the end of /laa:fix, /laa:feature, /laa:migrate, /laa:build, after any session where the user corrected Claude, or when the user says "retro" or "what did we learn".
 argument-hint: "[focus]"
 ---
 
 # /laa:retro
 
 Focus (optional): $ARGUMENTS
+
+## Output
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: end with the closing report and **Next**. No mode or step lines; a retro is short.
 
 ## 1. Look back at this session
 Find the **signals**, not a diary. Each needs concrete evidence from the conversation or diff:
@@ -39,4 +42,9 @@ Create the file with `# Learnings` if it's missing. Append one entry per signal:
 
 ## 4. Quick wins and nudge
 - If a learning is a **fact correction** in `project-map.md` (a wrong path or command), fix it now. That's data, not behavior.
-- Count the `open` entries. If there are 3 or more, or any single entry is high impact, suggest running `/laa:evolve`.
+- Count the `open` entries. If there are 3 or more, or any single entry is high impact, put `/laa:evolve` first in **Next**.
+
+## 5. Report
+End with the closing report: one list item per entry added (`kind · scope · title`) and **Next**. With no signals, the status line says so and nothing is written.
+
+Only when a pipeline (`/laa:fix`, `/laa:feature`, `/laa:migrate`, `/laa:build`) loads this skill itself as its retro step, in the same turn, and will print its own closing report next, skip this report: list the entries as `kind · scope · title` lines, with no status line and no **Next**. When the user types `/laa:retro`, always end with the report above, even right after a pipeline.

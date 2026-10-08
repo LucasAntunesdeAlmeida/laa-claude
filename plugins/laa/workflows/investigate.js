@@ -1,6 +1,6 @@
 export const meta = {
   name: 'investigate',
-  description: 'Fan out bug investigators across independent angles, cluster their hypotheses, and adversarially verify each root cause',
+  description: 'Engine · root-cause fan-out behind /laa:fix: investigators on independent angles, clustered, each cause adversarially verified. For a bug report use /laa:fix, which reproduces, runs this, fixes, and reviews; typed alone this only investigates',
   whenToUse: 'Called by /laa:fix for non-trivial bugs, or typed as /laa:investigate <bug description>. args: { bug, repro?, context?, angles?, thorough? }',
   phases: [
     { title: 'Investigate', detail: 'one investigator per angle' },
@@ -11,12 +11,19 @@ export const meta = {
 
 // Plugin agent types resolve as '<plugin>:<agent>'. If resolution fails (plugin renamed, older Claude Code),
 // fall back to a general-purpose agent told to follow that agent's role, so the workflow still completes.
+// Each fallback is recorded in `degraded` so the report says which specialists were missing.
+const degraded = []
 const spawn = (prompt, opts) => agent(prompt, opts).catch(err => {
   if (!opts.agentType) throw err
   log(`agentType ${opts.agentType} unavailable (${err.message}); falling back to default agent`)
+  if (!degraded.includes(opts.agentType)) degraded.push(opts.agentType)
   const { agentType, ...rest } = opts
   return agent(`Act as the ${agentType.split(':').pop()} specialist from the laa toolkit.\n\n${prompt}`, rest)
 })
+
+// The Markdown report every workflow returns: one line per entry, plus a note when specialists fell back.
+const render = lines => lines.join('\n') +
+  (degraded.length ? `\n\n**▲ Degraded** · ${degraded.join(', ')} unavailable; generic agents stood in` : '')
 
 // Skills pass args as an object. Typing `/laa:<workflow> <text>` passes plain text instead (and an
 // object sometimes arrives JSON-encoded), so accept all three.
@@ -100,7 +107,14 @@ const perAngle = await parallel(angles.map(angle => () =>
     .then(r => r && r.hypotheses.map(h => ({ ...h, angle })))))
 const all = perAngle.filter(Boolean).flat()
 log(`${all.length} hypotheses from ${angles.length} angles`)
-if (!all.length) return { hypotheses: [], note: 'No investigator produced a hypothesis. Gather more evidence (logs, repro) and rerun.' }
+if (!all.length) {
+  return {
+    hypotheses: [],
+    note: 'No investigator produced a hypothesis. Gather more evidence (logs, repro) and rerun.',
+    report: render(['**▲ No hypotheses** · gather logs or a reproduction and rerun']),
+    degraded,
+  }
+}
 
 // Barrier is intentional: clustering needs every angle's hypotheses at once.
 phase('Cluster')
@@ -129,5 +143,13 @@ const verified = await parallel(clusters.map((c, i) => () =>
     })))
 
 const ranked = verified.filter(Boolean).sort((a, b) => (b.confirmed - b.refuted) - (a.confirmed - a.refuted))
-log(`${ranked.filter(r => r.survives).length}/${ranked.length} root causes survived verification`)
-return { hypotheses: ranked }
+const survivors = ranked.filter(r => r.survives).length
+log(`${survivors}/${ranked.length} root causes survived verification`)
+
+const report = render([
+  `**${survivors} of ${ranked.length} root causes survived verification** · ${angles.length} angles`,
+  ...ranked.map(c => c.survives
+    ? `- ✓ \`${c.location}\` ${c.rootCause} · ${c.confirmed} confirmed, ${c.refuted} refuted → ${c.howToConfirm}`
+    : `- ✗ \`${c.location}\` ${c.rootCause} · refuted`),
+])
+return { hypotheses: ranked, report, degraded }

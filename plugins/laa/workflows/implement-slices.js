@@ -1,6 +1,6 @@
 export const meta = {
   name: 'implement-slices',
-  description: 'Implement independent work items in parallel git worktrees, review each branch, and apply one round of fixes',
+  description: 'Engine · parallel implementation behind /laa:feature and /laa:build: one implementer per slice in its own worktree, a review per branch, one round of fixes',
   whenToUse: 'Called by /laa:build and /laa:feature once a plan is approved, or typed as /laa:implement-slices <task> to build one task in a worktree with review. args: { base?, slices: [{ id, title, spec, files?, acceptance? }], conventions? }',
   phases: [
     { title: 'Implement', detail: 'one implementer per slice, each in its own worktree' },
@@ -11,12 +11,19 @@ export const meta = {
 
 // Plugin agent types resolve as '<plugin>:<agent>'. If resolution fails (plugin renamed, older Claude Code),
 // fall back to a general-purpose agent told to follow that agent's role, so the workflow still completes.
+// Each fallback is recorded in `degraded` so the report says which specialists were missing.
+const degraded = []
 const spawn = (prompt, opts) => agent(prompt, opts).catch(err => {
   if (!opts.agentType) throw err
   log(`agentType ${opts.agentType} unavailable (${err.message}); falling back to default agent`)
+  if (!degraded.includes(opts.agentType)) degraded.push(opts.agentType)
   const { agentType, ...rest } = opts
   return agent(`Act as the ${agentType.split(':').pop()} specialist from the laa toolkit.\n\n${prompt}`, rest)
 })
+
+// The Markdown report every workflow returns: one line per entry, plus a note when specialists fell back.
+const render = lines => lines.join('\n') +
+  (degraded.length ? `\n\n**▲ Degraded** · ${degraded.join(', ')} unavailable; generic agents stood in` : '')
 
 // Skills pass args as an object. Typing `/laa:<workflow> <text>` passes plain text instead (and an
 // object sometimes arrives JSON-encoded), so accept all three.
@@ -112,4 +119,13 @@ const results = await pipeline(input.slices,
 const summary = results.map((r, i) => r || { slice: input.slices[i].id, impl: null, review: null })
 const blocked = summary.filter(r => !r.impl || r.impl.status !== 'done').map(r => r.slice)
 if (blocked.length) log(`Blocked or failed slices: ${blocked.join(', ')}`)
-return { base, results: summary, blocked }
+
+const n = summary.length
+const done = n - blocked.length
+const report = render([
+  blocked.length ? `**▲ ${done}/${n} slices done** · blocked: ${blocked.join(', ')}` : `**✓ ${done}/${n} slices done**`,
+  ...summary.map((r, i) => r.impl && r.impl.status === 'done'
+    ? `- ✓ \`${r.impl.branch}\` ${input.slices[i].title} · review: ${r.review ? r.review.verdict : 'none'}${r.fix && r.fix.status === 'done' ? ' · fixed' : ''}`
+    : `- ✗ ${r.slice} ${(r.impl && ((r.impl.blockers && r.impl.blockers[0]) || r.impl.summary)) || 'no result'}`),
+])
+return { base, results: summary, blocked, report, degraded }

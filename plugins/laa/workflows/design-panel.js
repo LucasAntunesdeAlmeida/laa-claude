@@ -1,6 +1,6 @@
 export const meta = {
   name: 'design-panel',
-  description: 'Judge panel for architecture: N architects with different lenses, scored by judges, synthesized, then deep-dived by data/API/security/perf/infra specialists',
+  description: 'Engine · architecture judge panel behind /laa:build and /laa:feature: one architect per lens, scored by judges, synthesized, then deep-dived by data, API, security, perf, and infra specialists',
   whenToUse: 'Called by /laa:build and /laa:feature, or typed as /laa:design-panel <requirements> for a standalone architecture decision. args: { requirements, context?, lenses? }',
   phases: [
     { title: 'Propose', detail: 'one architect per lens' },
@@ -12,12 +12,19 @@ export const meta = {
 
 // Plugin agent types resolve as '<plugin>:<agent>'. If resolution fails (plugin renamed, older Claude Code),
 // fall back to a general-purpose agent told to follow that agent's role, so the workflow still completes.
+// Each fallback is recorded in `degraded` so the report says which specialists were missing.
+const degraded = []
 const spawn = (prompt, opts) => agent(prompt, opts).catch(err => {
   if (!opts.agentType) throw err
   log(`agentType ${opts.agentType} unavailable (${err.message}); falling back to default agent`)
+  if (!degraded.includes(opts.agentType)) degraded.push(opts.agentType)
   const { agentType, ...rest } = opts
   return agent(`Act as the ${agentType.split(':').pop()} specialist from the laa toolkit.\n\n${prompt}`, rest)
 })
+
+// The Markdown report every workflow returns: one line per entry, plus a note when specialists fell back.
+const render = lines => lines.join('\n') +
+  (degraded.length ? `\n\n**▲ Degraded** · ${degraded.join(', ')} unavailable; generic agents stood in` : '')
 
 // Skills pass args as an object. Typing `/laa:<workflow> <text>` passes plain text instead (and an
 // object sometimes arrives JSON-encoded), so accept all three.
@@ -110,4 +117,12 @@ const dives = await parallel(specialists.map(s => () =>
 
 const result = { blueprint, ranking: totals, judgments }
 for (const d of dives.filter(Boolean)) result[d.key] = d.text
-return result
+
+const DIVE_NAMES = { dataModel: 'data model', api: 'API', threatModel: 'threat model', scaleRisks: 'scale risks', infra: 'infra' }
+const returned = dives.filter(d => d && d.text).map(d => DIVE_NAMES[d.key])
+const report = render([
+  `**✓ Proposal ${winner} wins** · ${totals[0].lens} · score ${totals[0].score.toFixed(1)}`,
+  ...totals.map((t, i) => `- ${i + 1}. ${t.lens} · ${t.score.toFixed(1)}`),
+  `- Deep-dives: ${returned.length ? returned.join(', ') : 'none'}`,
+])
+return { ...result, report, degraded }

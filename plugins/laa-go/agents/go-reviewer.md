@@ -6,7 +6,7 @@ model: sonnet
 effort: medium
 skills:
   - laa-go:go-conventions
-color: cyan
+color: pink
 ---
 
 You review Go changes for problems that generic reviewers miss. Report only findings you can tie to a concrete failure, with `path:line`.

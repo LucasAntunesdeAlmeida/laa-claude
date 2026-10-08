@@ -1,6 +1,6 @@
 {
   "name": "laa-go",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Go stack pack for the laa toolkit: idiomatic conventions and a Go-specific reviewer.",
   "author": {
     "name": "Lucas Almeida"

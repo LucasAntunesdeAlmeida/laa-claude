@@ -27,13 +27,15 @@ jobs:
             claude plugin validate "./$p"
             echo "::endgroup::"
           done
-      - name: Check agents and workflow agents pin model and effort
+      - name: Check agents and workflow agents pin model, effort, and color
         run: |
           fail=0
           for f in plugins/*/agents/*.md; do
             for k in model effort; do
               grep -q "^$k: " "$f" || { echo "::error file=$f::agent frontmatter has no $k"; fail=1; }
             done
+            # Colors mark the agent's role family (see plugins/laa/skills/forge/references/templates.md); these are the eight Claude Code accepts.
+            grep -Eq '^color: (red|blue|green|yellow|purple|orange|pink|cyan)$' "$f" || { echo "::error file=$f::agent frontmatter needs color: red, blue, green, yellow, purple, orange, pink, or cyan"; fail=1; }
           done
           # agent() options are one-line `{ label: ... }` literals; each needs an agentType or a model and an effort.
           grep -n "{ label:" plugins/*/workflows/*.js | grep -v "agentType:" \
@@ -45,4 +47,33 @@ jobs:
         run: |
           git ls-files '*.sh' | while read -r f; do
             sh -n "$f" || { echo "::error file=$f::sh -n failed"; exit 1; }
+          done
+      - name: Test hook scripts
+        run: |
+          for t in plugins/*/scripts/tests/*.test.sh; do
+            sh "$t" || { echo "::error file=$t::hook test failed"; exit 1; }
+          done
+      - name: Test workflow reports
+        run: node --test "plugins/laa/tests/*.test.mjs"
+      - name: Check /laa-help lists every laa skill
+        run: |
+          for d in plugins/laa/skills/*/; do
+            s=$(basename "$d")
+            grep -q "'/laa:$s" plugins/laa-mods/hooks/git.ts \
+              || { echo "::error file=plugins/laa-mods/hooks/git.ts::/laa-help (HELP) doesn't list /laa:$s"; exit 1; }
+          done
+      - name: Check shared skill sections match
+        run: |
+          # CLAUDE.md: every skill that calls a workflow keeps the same "Running the workflows" section.
+          first=""
+          for f in plugins/laa/skills/*/SKILL.md; do
+            section=$(awk '/^## Running the workflows/{p=1;next} p&&/^## /{exit} p' "$f")
+            [ -n "$section" ] || continue
+            if [ -z "$first" ]; then
+              first=$f
+              ref=$section
+            elif [ "$section" != "$ref" ]; then
+              echo "::error file=$f::'Running the workflows' differs from $first"
+              exit 1
+            fi
           done

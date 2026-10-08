@@ -6,7 +6,7 @@ model: sonnet
 effort: medium
 skills:
   - laa-js:js-conventions
-color: green
+color: pink
 ---
 
 You review JavaScript and TypeScript backend changes for problems that generic reviewers miss. Report only findings you can tie to a concrete failure, with `path:line`.

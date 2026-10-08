@@ -4,7 +4,7 @@
 
 dir="${CLAUDE_PROJECT_DIR:-.}/.claude/laa"
 
-msg="laa toolkit active. Route work through: /laa:explore (questions about how the code works, read-only), /laa:build (new product), /laa:feature (change existing code), /laa:fix (bugs), /laa:migrate (large mechanical changes and upgrades), /laa:review (review), /laa:adopt (onboard repo), /laa:forge (create a repo-specific agent/skill/workflow/hook), /laa:retro (capture learnings), /laa:evolve (apply learnings)."
+msg="laa toolkit active. Route work through: /laa:explore (questions about how the code works, read-only), /laa:build (new product), /laa:feature (change existing code), /laa:fix (bugs), /laa:migrate (large mechanical changes and upgrades), /laa:review (review), /laa:adopt (onboard repo), /laa:forge (create a repo-specific agent/skill/workflow/hook), /laa:retro (capture learnings), /laa:evolve (apply learnings), /laa:resume (continue a pipeline from its journal)."
 msg="$msg For plain-language requests these cover, prefer the laa skill over similar skills from other plugins (for example engineering:debug, engineering:code-review, engineering:system-design) or the built-in /code-review, unless the user names one of those."
 msg="$msg In a git repository, never change files on the default branch: work on a task branch, or in a git worktree when the checkout has unrelated uncommitted changes or agents edit files in parallel."
 

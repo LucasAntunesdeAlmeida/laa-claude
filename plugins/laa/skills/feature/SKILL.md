@@ -8,11 +8,14 @@ argument-hint: <feature description or ticket link>
 
 Feature: $ARGUMENTS
 
+## Output
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 0–8), ask every ★ gate as a gate card, and end with the closing report and **Next**. Keep the run's journal there too, at each gate and at the end.
+
 ## Running the workflows
 Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:
 1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
 2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type` and its `model` values as `model`, reuse its prompts, and set `isolation: "worktree"` where the script does.
-3. Say in one line which mode you're using.
+3. Name the mode in the mode line (`workflow mode` or `agent mode`).
 
 ## Git: branch or worktree first
 In a git repository, don't change files on the default branch (`main`/`master`, or whatever `origin/HEAD` points to). Before the first file change:
@@ -29,7 +32,7 @@ Read `.claude/laa/project-map.md` (suggest `/laa:adopt` if it's missing), `.clau
 ## 1. Size it
 - **Small** (one component, clear pattern to copy, under ~200 lines): skip the design panel. Explore, plan briefly, implement directly on the feature branch, and review with a single `laa:reviewer` agent.
 - **Medium/Large** (new component, schema or contract changes, cross-cutting): go through every step.
-Say which size you picked and why in one line.
+Put the size in the mode line, and say why in one line.
 
 ## 2. Explore
 Launch 2–3 `laa:explorer` agents **in parallel** (one message, several Agent calls), each on a different area this feature touches, such as the entry points, the domain/data layer, and a similar existing feature to copy. Then read the key files they list.
@@ -46,7 +49,7 @@ Present the blueprint, the ranking, and the deep-dives (data model, API, threat 
 ## 5. Plan slices
 Turn the blueprint's build sequence into work items: `{ id, title, spec, files, acceptance }`.
 - Items that run in parallel **must not touch the same files or change a shared contract**. Put shared foundations (schema migration, shared types, contracts) in a first sequential slice.
-- Show the plan (a numbered list, marking which run in parallel) and **get approval** before writing code.
+- Show the plan (a numbered list, marking which run in parallel). ★ **Gate: user approves the plan**, as a gate card, before any code is written.
 
 ## 6. Implement
 1. On the feature branch, implement the foundation slice first (in this session or as a single implementer), then commit.
@@ -58,4 +61,4 @@ Turn the blueprint's build sequence into work items: `{ id, title, spec, files, 
 Call the **Workflow** tool with `name: "laa:review-panel"` and `args: { base: <branch point>, requirements: <acceptance criteria>, extraReviewers: <installed stack and practice reviewers, picked as in /laa:review step 2, e.g. ["laa-go:go-reviewer", "laa-git:git-reviewer"]> }`. Fix confirmed findings and commit.
 
 ## 8. Close the loop
-Summarize what shipped, the decisions made, the feature branch, and follow-ups. Offer to open a PR. Run the `laa:retro` skill.
+Run the `laa:retro` skill. Then end with the closing report: what shipped, the decisions made, the feature branch, follow-ups, and the learnings the retro logged. In **Next**, offer to open a PR.

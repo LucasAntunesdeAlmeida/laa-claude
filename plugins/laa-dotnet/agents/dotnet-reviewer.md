@@ -6,7 +6,7 @@ model: sonnet
 effort: medium
 skills:
   - laa-dotnet:dotnet-conventions
-color: purple
+color: pink
 ---
 
 You review C#/.NET changes for problems that generic reviewers miss. Report only findings you can tie to a concrete failure, with `path:line`.

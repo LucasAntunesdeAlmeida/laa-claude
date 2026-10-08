@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { parseLearnings, rejectLearning } from '../hooks/git'
-import { bash, denied, edit, fakeRepo, ROOT } from './fake'
+import { bash, denied, edit, fakeRepo, ROOT, turnEnd } from './fake'
 
 // Invented entries in the laa:retro format: two open, one already applied.
 const FILE = [
@@ -95,8 +95,31 @@ describe('guard toast', () => {
     expect(denied(await $.tool.call(edit(`${ROOT}/src/a.go`)))).toBe(true)
     expect(denied(await $.tool.call(bash('git commit -m x')))).toBe(true)
     expect(seen.toasts).toEqual([
-      'laa: blocked editing a.go on main. Create a task branch first.',
-      'laa: blocked a commit on main. Create a task branch first.',
+      'laa · blocked editing a.go on main. Create a task branch first.',
+      'laa · blocked a commit on main. Create a task branch first.',
     ])
+  })
+})
+
+describe('learning logged toast', () => {
+  test('says once, at the end of the turn, how many learnings it added', async ($, on) => {
+    const seen = fakeRepo(on, { branch: 'feat/export', learnings: FILE })
+    on('turn.complete', ($, e) => ({ text: e.answer }))
+    const path = '.claude/laa/learnings.md'
+    await $.tool.call(edit(`${ROOT}/${path}`))
+    seen.setFile(path, `${FILE}
+## 2026-01-13 · laa:fix · one
+- status: open
+`)
+    await $.tool.call(edit(`${ROOT}/${path}`))
+    seen.setFile(path, `${seen.file(path)}
+## 2026-01-13 · laa:fix · two
+- status: open
+`)
+    expect(seen.toasts).toEqual([])
+    await $.turn.complete(turnEnd('Logged two learnings.'))
+    expect(seen.toasts).toEqual(['laa · 2 learnings logged · 4 open · /laa-learnings'])
+    await $.turn.complete(turnEnd('Nothing else.'))
+    expect(seen.toasts).toHaveLength(1)
   })
 })

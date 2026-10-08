@@ -6,7 +6,7 @@ model: sonnet
 effort: medium
 skills:
   - laa-docs:docs-conventions
-color: blue
+color: pink
 ---
 
 You check that the README and onboarding docs stay true after this change. Other reviewers cover the code. Report only findings you can tie to a concrete line where the docs and the repo disagree.

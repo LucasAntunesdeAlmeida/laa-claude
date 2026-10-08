@@ -84,3 +84,40 @@ describe('/laa:retro nudge', () => {
     expect(w.suggested).toEqual(['/laa:retro', 'run the tests'])
   })
 })
+
+const closing = 'Found 3 findings; 2 were refuted.\n\n**Next**\n- `/laa:review --fix`: apply the HIGH fixes\n- say "open the PR"'
+
+describe('next-step suggestion', () => {
+  test("offers the first laa command of a closing report's Next list, once", async ($, on) => {
+    const w = world(on)
+    await $.turn.complete({ ...turnEnd(), answer: closing })
+    await w.clock.advance(500)
+    expect(w.suggested).toEqual(['/laa:review --fix'])
+    await $.prompt.suggest({ text: 'run the tests', origin: { kind: 'suggestion' } })
+    expect(w.suggested).toEqual(['/laa:review --fix', 'run the tests'])
+  })
+
+  test("replaces the engine's own guess with the Next command before its own nudge", async ($, on) => {
+    const w = world(on)
+    await $.turn.complete({ ...turnEnd(), answer: closing })
+    await $.prompt.suggest({ text: 'run the tests', origin: { kind: 'suggestion' } })
+    await w.clock.advance(500)
+    expect(w.suggested).toEqual(['/laa:review --fix'])
+  })
+
+  test('lets the retro nudge win while it is due', async ($, on) => {
+    const w = world(on)
+    await $.skill.prompt(skill('fix'))
+    await $.tool.call(bash('git commit -m "fix: x"'))
+    await $.turn.complete({ ...turnEnd(), answer: closing })
+    await w.clock.advance(500)
+    expect(w.suggested).toEqual(['/laa:retro'])
+  })
+
+  test('offers nothing for a reply without a laa command in its Next list', async ($, on) => {
+    const w = world(on)
+    await $.turn.complete({ ...turnEnd(), answer: 'Done.\n\n**Next**\n- say "open the PR"' })
+    await w.clock.advance(500)
+    expect(w.suggested).toEqual([])
+  })
+})

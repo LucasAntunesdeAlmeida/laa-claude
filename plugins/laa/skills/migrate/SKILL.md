@@ -8,11 +8,14 @@ argument-hint: <the change, e.g. "replace logrus with log/slog">
 
 Change: $ARGUMENTS
 
+## Output
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 0–7), ask every ★ gate as a gate card, and end with the closing report and **Next**. Keep the run's journal there too, at each gate and at the end.
+
 ## Running the workflows
 Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:
 1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
 2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type` and its `model` values as `model`, reuse its prompts, and set `isolation: "worktree"` where the script does.
-3. Say in one line which mode you're using.
+3. Name the mode in the mode line (`workflow mode` or `agent mode`).
 
 ## Git: branch or worktree first
 In a git repository, don't change files on the default branch (`main`/`master`, or whatever `origin/HEAD` points to). Before the first file change (the pilot counts):
@@ -27,7 +30,7 @@ Commit only on work branches. Don't merge into the default branch, push, or open
 Read `.claude/laa/project-map.md` and `.claude/laa/learnings.md`. For a version or library upgrade, fetch the official upgrade guide or release notes and list the breaking changes that apply to this repo.
 
 ## 1. Size it
-Estimate the number of sites (`grep -rl` for the old pattern, or the build errors after a version bump). Say which path you picked:
+Estimate the number of sites (`grep -rl` for the old pattern, or the build errors after a version bump). Put the path you picked in the mode line:
 - **Fewer than ~10 files**: make the change directly on the migration branch, then go to step 5.
 - **More**: go through every step.
 
@@ -64,4 +67,4 @@ Call `laa:migrate-sites` again with `discoverOnly: true`. Nothing should come ba
 Call the **Workflow** tool with `name: "laa:review-panel"` and `args: { base: <branch point>, requirements: "Mechanical migration: <change>. Must not change behavior. Recipe: <recipe>" }`. Fix confirmed findings and commit.
 
 ## 7. Close the loop
-Summarize the sites changed, the sites skipped (with reasons), the migration branch, and follow-ups. Offer to open a PR. Run the `laa:retro` skill. A recipe that worked well is a good candidate for a repo-local skill (see `laa:forge`).
+Run the `laa:retro` skill. Then end with the closing report: sites changed, sites skipped (with reasons), the migration branch, follow-ups, and the learnings the retro logged. In **Next**, offer to open a PR. A recipe that worked well is a good candidate for a repo-local skill (see `laa:forge`).

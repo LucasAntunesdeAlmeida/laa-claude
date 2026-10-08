@@ -18,7 +18,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 | `laa-docs` | Practice pack, any language: README/onboarding conventions skill + `docs-reviewer` agent (catches docs drift) |
 | `laa-docker` | Practice pack, any language: Docker-first local development skill (dependencies, tests, and debugging in containers when Docker is available) + `docker-reviewer` agent (catches local-environment drift) |
 | `laa-api` | Practice pack, any language: API docs and tests skill (OpenAPI as the contract, a Bruno collection as runnable examples and tests, run in CI) + `api-reviewer` agent (catches drift between code, spec, and collection) |
-| `laa-mods` | Mods (TypeScript function hooks): a default-branch guard, a status band above the prompt, a learnings triage pane, and a `/laa:retro` nudge. Opt-in, see [Mods](#mods-laa-mods) |
+| `laa-mods` | Mods (TypeScript function hooks): a default-branch guard, a pipeline tracker above the prompt, `/laa-help`, panes for learnings and review findings, and next-step suggestions. Opt-in, see [Mods](#mods-laa-mods) |
 
 **Stack packs** add language rules, and their reviewers join reviews of matching files. **Practice packs** add language-agnostic rules, and their reviewers join every review.
 
@@ -58,17 +58,20 @@ You can type these directly, or just describe the task ("let's fix bug Z"). The 
 | Command | Use for | Fan-out |
 |---|---|---|
 | `/laa:explore <question>` | Understanding code: "how does X work", "what calls Y", "what breaks if I change Z" (read-only) | code graph lookup, or 2–4 explorers for broad questions → answer with `path:line` evidence |
-| `/laa:build <idea>` | New product or SaaS from zero | PRD → `design-panel` → ADRs → plan → walking skeleton → `adopt` → `implement-slices` per milestone → `review-panel` |
-| `/laa:feature <desc>` | A change in an existing repo | explorers → clarify → `design-panel` → slices → `implement-slices` → `review-panel` |
-| `/laa:fix <bug>` | Bugs and regressions | reproduce → `investigate` (5 angles) → verify → minimal fix → review |
+| `/laa:build <idea>` | New product or SaaS from zero | PRD ★ → `design-panel` → ADRs ★ → plan ★ → walking skeleton → `adopt` → `implement-slices` per milestone → `review-panel` ★ |
+| `/laa:feature <desc>` | A change in an existing repo | explorers → clarify → `design-panel` → slices ★ → `implement-slices` → `review-panel` |
+| `/laa:fix <bug>` | Bugs and regressions | reproduce → `investigate` (5 angles) → verify → root cause ★ (when unclear) → minimal fix → review |
 | `/laa:migrate <change>` | Large mechanical changes: Go/.NET/Python/Node upgrades, library swaps, renames | pilot → recipe ★ → `migrate-sites` finds sites ★ → batches in parallel worktrees → verify → sweep → `review-panel` |
 | `/laa:review [pr\|branch]` | Code review | `review-panel`: correctness, completeness, security, perf, infra, and stack reviewers, each finding adversarially verified |
-| `/laa:adopt` | First use in a repo | pick code-intelligence tool ★ → `map-repo` → project map + recommended repo-specific assets |
+| `/laa:adopt` | First use in a repo | pick code-intelligence tool → `map-repo` → project map → assets to create ★ |
 | `/laa:forge <need>` | Create one repo-specific agent, skill, workflow, or hook | evidence → template → smoke test → register |
+| `/laa:resume [branch]` | Continue a pipeline after `/clear`, a compaction, or time away | reads `.claude/laa/local/runs/<branch>.md` → asks the pending ★ gate again → continues that pipeline |
 | `/laa:retro` | Capture learnings after work | — |
 | `/laa:evolve` | Turn learnings into approved diffs (local) or PRs with evals (upstream) | — |
 
 Every pipeline sizes itself to the task. Trivial bugs and small features skip the fan-out.
+
+**What you see:** every run follows one output contract ([`plugins/laa/references/output.md`](plugins/laa/references/output.md)). It opens with a mode line (`**laa:fix** · standard · workflow mode`), marks each step (`**▸ 3/7 · Investigate**`), asks each ★ gate as a card with **Approve**, **Revise**, and **Stop**, and closes with a `✓`, `✗`, or `▲` status line and a **Next** list.
 
 **Git:** in a git repo, every command that changes files works on a task branch (`fix/…`, `feat/…`, `migrate/…`, `chore/laa-…`). If your checkout has other uncommitted changes, it uses a git worktree instead of switching branches under them. Parallel agents always get their own worktrees. Nothing is committed to the default branch, and nothing is merged, pushed, or opened as a PR unless you ask.
 
@@ -100,6 +103,7 @@ Per-project state lives in `<project>/.claude/laa/`:
 - `project-map.md`: the codebase map every agent reads first
 - `learnings.md`: the retro log (`status: open | applied | rejected | upstreamed`)
 - `assets.md`: an inventory of generated assets and why each one exists
+- `local/`: state that is never committed (it ignores itself): `runs/<branch>.md`, the journal `/laa:resume` reads, and `last-review.md`, the findings the `/laa-findings` pane lists
 
 Several agents (`explorer`, `reviewer`, `investigator`, `security-reviewer`) also keep persistent **project memory** across sessions.
 
@@ -134,7 +138,7 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
 
 - **Default-branch guard**: refuses Edit, Write, and NotebookEdit on files tracked in a repo whose default branch is checked out, and refuses `git commit` there. The default branch is `origin/HEAD`, or `main`/`master` without a remote. It lets through:
   - a repo with no commits yet, whose first commit has nothing to branch from;
-  - files git ignores, and files outside the repo.
+  - files git ignores, laa's local state (`.claude/laa/local/`), and files outside the repo.
 
   The refusal tells Claude to create a task branch or a worktree, and a toast shows it on screen. To work on the default branch on purpose, type `/laa-allow-main`, which allows it for the session; type it again to block again.
 - **Learnings pane**: `/laa-learnings [repo path]` opens a pane listing the open entries of `.claude/laa/learnings.md`: title, scope, kind, target, signal, and proposal.
@@ -142,15 +146,51 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
   - **Evolve** (hotkey `e`) puts `/laa:evolve` in the prompt for you to send.
 
   Nothing else changes from the pane: evolve still shows every diff for approval.
-- **Retro nudge**: after a `/laa:fix`, `/laa:feature`, `/laa:migrate`, or `/laa:build` that committed something, the prompt box suggests `/laa:retro` (Tab to take it).
+- **Status band**, above the prompt in adopted repos. It shows at most one alarm, in the theme's own colors, and refreshes after each turn and each git command:
+  - the branch, with `✗ main · edits blocked` when the guard is blocking the default branch;
+  - the laa run in progress: `● laa:fix ▸ 3/7 Investigate · engine investigate`, or `★ laa:feature · waiting on you: Approve the plan?` at a gate. It reads the mode, step, and gate lines of the output contract, AskUserQuestion gates, and Workflow calls;
+  - a pipeline that stopped on this branch, from its journal: `○ paused laa:feature ▸ 5/8 Plan slices → /laa:resume`;
+  - open high review findings (`→ /laa-findings`), open learnings (`→ /laa:evolve` at 3 or more), and a missing or stale project map (`→ /laa:adopt` at 50+ commits).
+
+  The map nudge has a **mute** button (hotkey `m`, after ctrl+x tab focuses the band). It mutes the nudge for that repo, until the map goes 100 commits stale.
+- **Footer label**: the prompt footer's mode labels show the run too, as `laa:fix 3/7` or `laa:feature ★`.
+- **`/laa-help`**: every laa command grouped by job (Understand, Change, Check, Continue, Set up, Learn), the engines, this repo's state, and the one command worth running next. It answers instantly, with no model turn.
+- **Findings pane**: `/laa-findings [repo path]` lists the open findings `/laa:review` saved to `.claude/laa/local/last-review.md`.
+  - **Fix** puts a self-contained fix request in the prompt for you to send, and **Fix all CRIT and HIGH** (hotkey `f`) does the same for every high finding.
+  - **Dismiss** marks a finding `status: dismissed`.
+- **Next step**: when a laa run's closing report has a laa command in its **Next** list, the prompt box suggests the first one (Tab to take it), once.
+- **Retro nudge**: after a `/laa:fix`, `/laa:feature`, `/laa:migrate`, or `/laa:build` that committed something, the prompt box suggests `/laa:retro` instead.
   - It shows once per pipeline, and never if the retro already ran.
   - It stays quiet at approval gates before the first commit.
   - It replaces Claude Code's own next-prompt guess only while the nudge is due.
-- **Status band**, above the prompt in adopted repos: the branch, open learnings (with `/laa:evolve` at 3 or more), and a missing or stale project map (50+ commits since it changed, with `/laa:adopt`). It refreshes after each turn and each git command.
+- **Learning logged**: when a turn adds entries to `.claude/laa/learnings.md`, through `/laa:retro` or a captured correction, a toast says how many it added, once, at the end of the turn.
 
-The guard's scope is the `guard` option in `/config`: `adopted` (default: repos with `.claude/laa/`), `always` (every git repo), or `off`.
+The guard's scope is the `guard` option in `/config`: `adopted` (default: repos where `.claude/laa/` holds `learnings.md` or `project-map.md`), `always` (every git repo), or `off`.
 
 **Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it and `claude plugin test ./plugins/laa-mods` runs its tests. The mods API is early access and can change between Claude Code releases.
+
+## Spinner tips (optional)
+To learn the toolkit while Claude works, add these to `~/.claude/settings.json`. They join Claude Code's own tips under a `laa` label, and each waits three sessions before it shows again. Tip objects and `label` only work from user settings; project settings take plain strings only.
+```json
+{
+  "spinnerTipsOverride": {
+    "label": "laa",
+    "tips": [
+      { "id": "laa-help", "text": "/laa-help lists every laa command by job and says what to run next here", "cooldownSessions": 3, "priority": 2 },
+      { "id": "laa-resume", "text": "/laa:resume picks a stopped pipeline up at its last gate, even after /clear", "cooldownSessions": 3 },
+      { "id": "laa-findings", "text": "/laa-findings opens the last review's findings in a pane: Fix, Dismiss, or f to fix every HIGH", "cooldownSessions": 3 },
+      { "id": "laa-review-thorough", "text": "/laa:review --thorough runs three skeptics per finding; use it for auth, payments, and migrations", "cooldownSessions": 3 },
+      { "id": "laa-review-fix", "text": "/laa:review --fix applies the CRIT and HIGH fixes on the branch under review", "cooldownSessions": 3 },
+      { "id": "laa-design-panel", "text": "/laa:design-panel <requirements> runs the architecture judge panel on its own", "cooldownSessions": 3 },
+      { "id": "laa-migrate", "text": "/laa:migrate pilots one site, gets the recipe approved, then changes the rest in parallel worktrees", "cooldownSessions": 3 },
+      { "id": "laa-explore", "text": "/laa:explore answers how the code works with path:line evidence, and changes nothing", "cooldownSessions": 3 },
+      { "id": "laa-learnings", "text": "/laa-learnings triages open learnings in a pane; e puts /laa:evolve in the prompt", "cooldownSessions": 3 },
+      { "id": "laa-allow-main", "text": "/laa-allow-main lets you edit the default branch on purpose, for this session only", "cooldownSessions": 5 },
+      { "id": "laa-band-mute", "text": "ctrl+x tab focuses the laa band; m mutes the project map nudge for this repo", "cooldownSessions": 5 }
+    ]
+  }
+}
+```
 
 ## Developing this repo
 

@@ -1,6 +1,6 @@
 export const meta = {
   name: 'review-panel',
-  description: 'Parallel multi-dimension code review (correctness, security, perf, completeness, stack-specific) with adversarial verification of every finding',
+  description: 'Engine · multi-dimension review behind /laa:review: correctness, completeness, security, perf, and stack or practice reviewers, every finding adversarially verified',
   whenToUse: 'Called by /laa:review and at the end of /laa:feature and /laa:build milestones, or typed as /laa:review-panel [base-ref | review focus]. args: { base?, target?, workdir?, requirements?, extraReviewers?, thorough? }',
   phases: [
     { title: 'Review', detail: 'one reviewer per dimension' },
@@ -10,12 +10,19 @@ export const meta = {
 
 // Plugin agent types resolve as '<plugin>:<agent>'. If resolution fails (plugin renamed, older Claude Code),
 // fall back to a general-purpose agent told to follow that agent's role, so the workflow still completes.
+// Each fallback is recorded in `degraded` so the report says which specialists were missing.
+const degraded = []
 const spawn = (prompt, opts) => agent(prompt, opts).catch(err => {
   if (!opts.agentType) throw err
   log(`agentType ${opts.agentType} unavailable (${err.message}); falling back to default agent`)
+  if (!degraded.includes(opts.agentType)) degraded.push(opts.agentType)
   const { agentType, ...rest } = opts
   return agent(`Act as the ${agentType.split(':').pop()} specialist from the laa toolkit.\n\n${prompt}`, rest)
 })
+
+// The Markdown report every workflow returns: one line per entry, plus a note when specialists fell back.
+const render = lines => lines.join('\n') +
+  (degraded.length ? `\n\n**▲ Degraded** · ${degraded.join(', ')} unavailable; generic agents stood in` : '')
 
 // Skills pass args as an object. Typing `/laa:<workflow> <text>` passes plain text instead (and an
 // object sometimes arrives JSON-encoded), so accept all three.
@@ -105,4 +112,13 @@ const order = { critical: 0, high: 1, medium: 2, low: 3 }
 const confirmed = all.filter(f => f.verified).sort((a, b) => order[a.severity] - order[b.severity])
 const dropped = all.length - confirmed.length
 if (dropped) log(`${dropped} finding(s) refuted by verifiers and dropped`)
-return { confirmed, refutedCount: dropped }
+
+const TAG = { critical: 'CRIT', high: 'HIGH', medium: 'MED', low: 'LOW' }
+const dims = DIMENSIONS.map(d => d.key).join(', ')
+const report = render(confirmed.length
+  ? [
+    `**${confirmed.length} ${confirmed.length === 1 ? 'finding' : 'findings'}** · ${dropped} refuted · ${dims}`,
+    ...confirmed.map(f => `- \`${TAG[f.severity]}\` \`${f.file}:${f.line}\` ${f.title} → ${f.fix}`),
+  ]
+  : [`**✓ No findings** · ${dropped} refuted · ${dims}`])
+return { confirmed, refutedCount: dropped, report, degraded }

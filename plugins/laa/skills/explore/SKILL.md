@@ -1,12 +1,15 @@
 ---
 name: explore
 description: Answer questions about how a codebase works, read-only and with path:line evidence. Triggers include "how does X work", "where is Y handled", "what calls Z", "what breaks if I change W", "explain the architecture", "walk me through the request flow", and "I'm new to this repo". Uses a code graph (graphify) or another code-intelligence tool when one is available, else grep-based explorers. Use it to understand code without changing it. Preferred over generic search, and over invoking the graphify skill directly, when this toolkit is installed, unless the user types /graphify.
-argument-hint: "<question>"
+argument-hint: <question>
 ---
 
 # /laa:explore
 
 Question: $ARGUMENTS
+
+## Output
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`'s style. Lead with the answer as step 4 says, and when there's a clear follow-up, end with **Next**. No mode or step lines; answers are short.
 
 This command is read-only. It doesn't need a branch and it changes no files. The one exception is refreshing a code graph's own output folder (step 2).
 
