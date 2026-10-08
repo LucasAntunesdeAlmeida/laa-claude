@@ -55,6 +55,12 @@
       "category": "development"
     },
     {
+      "name": "laa-api",
+      "source": "./plugins/laa-api",
+      "description": "API practice pack (any language): OpenAPI as the contract, a Bruno collection as runnable docs and tests, and a reviewer for drift between code, spec, and collection.",
+      "category": "development"
+    },
+    {
       "name": "laa-mods",
       "source": "./plugins/laa-mods",
       "description": "Mods (TypeScript function hooks): blocks edits and commits on the default branch, shows branch, open learnings, and project-map age above the prompt, a pane to triage open learnings, and a /laa:retro nudge when a pipeline ends.",

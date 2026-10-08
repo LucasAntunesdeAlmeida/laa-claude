@@ -1,0 +1,12 @@
+{
+  "name": "laa-api",
+  "version": "0.1.0",
+  "description": "API practice pack for the laa toolkit: OpenAPI as the contract, a Bruno collection as runnable docs and tests run in CI, and a reviewer for drift between code, spec, and collection. Works with any language.",
+  "author": {
+    "name": "Lucas Almeida"
+  },
+  "homepage": "https://github.com/LucasAntunesdeAlmeida/laa-claude#readme",
+  "repository": "https://github.com/LucasAntunesdeAlmeida/laa-claude",
+  "license": "MIT",
+  "keywords": ["api", "openapi", "bruno", "api-testing", "api-documentation"]
+}
