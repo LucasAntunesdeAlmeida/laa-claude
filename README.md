@@ -165,7 +165,7 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
   - It replaces Claude Code's own next-prompt guess only while the nudge is due.
 - **Learning logged**: when a turn adds entries to `.claude/laa/learnings.md`, through `/laa:retro` or a captured correction, a toast says how many it added, once, at the end of the turn.
 
-The guard's scope is the `guard` option in `/config`: `adopted` (default: repos with `.claude/laa/`), `always` (every git repo), or `off`.
+The guard's scope is the `guard` option in `/config`: `adopted` (default: repos where `.claude/laa/` holds `learnings.md` or `project-map.md`), `always` (every git repo), or `off`.
 
 **Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it and `claude plugin test ./plugins/laa-mods` runs its tests. The mods API is early access and can change between Claude Code releases.
 

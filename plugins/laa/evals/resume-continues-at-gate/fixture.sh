@@ -7,6 +7,7 @@ git add -A
 git -c user.email=dev@example.com -c user.name=dev commit -qm "chore: initial commit"
 git switch -qc feat/csv-export
 mkdir -p .claude/laa/local/runs
+printf '# Learnings' > .claude/laa/learnings.md
 printf '*\n' > .claude/laa/local/.gitignore
 cat > .claude/laa/local/runs/feat-csv-export.md <<'MD'
 # laa:feature · feat/csv-export

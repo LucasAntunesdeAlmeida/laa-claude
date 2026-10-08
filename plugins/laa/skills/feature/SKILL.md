@@ -61,4 +61,4 @@ Turn the blueprint's build sequence into work items: `{ id, title, spec, files, 
 Call the **Workflow** tool with `name: "laa:review-panel"` and `args: { base: <branch point>, requirements: <acceptance criteria>, extraReviewers: <installed stack and practice reviewers, picked as in /laa:review step 2, e.g. ["laa-go:go-reviewer", "laa-git:git-reviewer"]> }`. Fix confirmed findings and commit.
 
 ## 8. Close the loop
-Run the `laa:retro` skill. Then end with the closing report: what shipped, the decisions made, the feature branch, and follow-ups. In **Next**, offer to open a PR.
+Run the `laa:retro` skill. Then end with the closing report: what shipped, the decisions made, the feature branch, follow-ups, and the learnings the retro logged. In **Next**, offer to open a PR.

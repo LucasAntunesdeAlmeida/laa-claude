@@ -1,6 +1,6 @@
 ---
 name: retro-closes-with-contract
-description: /laa:retro ends with the output contract's closing report (a status line and a Next list), so every laa run closes the same way.
+description: /laa:retro ends with the output contract's closing report (a status line and a Next list), so every laa run closes the same way. It grades the reply only; the eval sandbox refuses writes under .claude/, so whether the entry lands in learnings.md isn't graded here.
 tags: [meta, retro, output]
 runs: 3
 max_turns: 10

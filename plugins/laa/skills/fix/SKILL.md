@@ -59,5 +59,5 @@ For standard and hard bugs, call the **Workflow** tool with `name: "laa:review-p
 For trivial ones, a single `laa:reviewer` agent is enough. Address any confirmed findings, then commit on the work branch.
 
 ## 7. Close the loop
-- End with the closing report: root cause (`path:line`), fix, test added, branch, and follow-ups. In **Next**, offer to open a PR.
 - Run the **retro** step (the `laa:retro` skill): was this a bug *class* that could recur? If so, propose a prevention, such as a lint rule, a hook, a repo-local skill rule, or a test helper. Suggestions only; don't apply them without approval.
+- End with the closing report: root cause (`path:line`), fix, test added, branch, follow-ups, and the learnings the retro logged. In **Next**, offer to open a PR.

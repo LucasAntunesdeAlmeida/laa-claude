@@ -11,7 +11,7 @@ Idea: $ARGUMENTS
 This is the heaviest pipeline in the toolkit. Keep the user in the loop at every ★ gate, each asked as a gate card. Never run past a gate without approval.
 
 ## Output
-Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (phases 1–6, as `▸ 2/6 · Architecture`), ask every ★ gate as a gate card, and end with the closing report and **Next**. Keep the run's journal there too, at each gate and at the end.
+Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (phases 1–6, as `**▸ 2/6 · Architecture**`), ask every ★ gate as a gate card, and end with the closing report and **Next**. Keep the run's journal there too, at each gate and at the end.
 
 ## Running the workflows
 Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:
@@ -72,4 +72,4 @@ For each milestone:
 5. Tick the milestone off in `docs/plan.md` and commit. Give a short status update. ★ **Gate: user approves merging the milestone into the default branch and continuing to the next one.**
 
 ## Phase 6: Close the loop
-Run the `laa:retro` skill, then end with the closing report: the milestones done, the default branch state, and **Next**. For a build this size, expect learnings both for the new repo (local) and for the toolkit itself (generic, such as a missing SaaS-essentials item or a weak prompt).
+Run the `laa:retro` skill, then end with the closing report: the milestones done, the default branch state, the learnings the retro logged, and **Next**. For a build this size, expect learnings both for the new repo (local) and for the toolkit itself (generic, such as a missing SaaS-essentials item or a weak prompt).

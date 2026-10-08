@@ -46,3 +46,5 @@ Create the file with `# Learnings` if it's missing. Append one entry per signal:
 
 ## 5. Report
 End with the closing report: one list item per entry added (`kind · scope · title`) and **Next**. With no signals, the status line says so and nothing is written.
+
+Only when a pipeline (`/laa:fix`, `/laa:feature`, `/laa:migrate`, `/laa:build`) loads this skill itself as its retro step, in the same turn, and will print its own closing report next, skip this report: list the entries as `kind · scope · title` lines, with no status line and no **Next**. When the user types `/laa:retro`, always end with the report above, even right after a pipeline.

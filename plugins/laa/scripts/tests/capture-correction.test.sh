@@ -7,7 +7,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 hook="$here/../capture-correction.sh"
 repo=$(mktemp -d)
 trap 'rm -rf "$repo"' EXIT
-mkdir -p "$repo/.claude/laa"
+mkdir -p "$repo/.claude/laa" "$repo/fresh/.claude/laa/local"
+printf '# Learnings\n' > "$repo/.claude/laa/learnings.md"
 fail=0
 
 flags() {
@@ -48,11 +49,13 @@ expect quiet "notes for the release are in docs/"
 expect quiet "add a now() helper to the clock package"
 expect quiet "fix the 500 on GET /invoices"
 
-# Repos laa hasn't adopted are left alone.
-if printf '{"prompt":"that is wrong"}' | CLAUDE_PROJECT_DIR="$repo/elsewhere" sh "$hook" | grep -q .; then
-  echo "FAIL: flagged a prompt outside an adopted repo"
-  fail=1
-fi
+# Repos laa hasn't adopted are left alone, including one where only laa's local state was written.
+for dir in "$repo/elsewhere" "$repo/fresh"; do
+  if printf '{"prompt":"that is wrong"}' | CLAUDE_PROJECT_DIR="$dir" sh "$hook" | grep -q .; then
+    echo "FAIL: flagged a prompt in $dir, which laa hasn't adopted"
+    fail=1
+  fi
+done
 
 [ "$fail" -eq 0 ] && echo "capture-correction: all cases pass"
 exit "$fail"

@@ -1,10 +1,11 @@
 #!/bin/sh
 # When a prompt looks like a correction, remind Claude to log it as a learning, so feedback given
-# outside laa commands isn't lost. Only active in repos adopted by laa (.claude/laa/ exists).
+# outside laa commands isn't lost. Only active in repos adopted by laa: .claude/laa/ holds learnings.md or
+# project-map.md (a folder holding only laa's local state doesn't count).
 # POSIX sh only: runs under Git Bash on Windows. Tested by scripts/tests/capture-correction.test.sh.
 
 dir="${CLAUDE_PROJECT_DIR:-.}/.claude/laa"
-[ -d "$dir" ] || exit 0
+[ -f "$dir/learnings.md" ] || [ -f "$dir/project-map.md" ] || exit 0
 
 input=$(cat)
 # Everything after "prompt": in the hook JSON is enough to match on, minus the closing quote and brace.

@@ -47,7 +47,7 @@ Call the **Workflow** tool with `name: "laa:review-panel"` and
 ## 4. Report
 Show the confirmed findings in the findings format of the output contract, most severe first, with how many were refuted. If nothing survived, say so in a `**✓ No findings**` status line.
 
-Then save them for the `/laa-findings` pane and later fixes: overwrite `.claude/laa/local/last-review.md` (see the output contract's local state) with
+Then, in a repo laa has adopted, save them for the `/laa-findings` pane and later fixes: overwrite `.claude/laa/local/last-review.md` (see the output contract's local state; it's fine on the default branch) with
 ```
 # Review · <target> against <base>
 ## <CRIT|HIGH|MED|LOW> · <file>:<line> · <title>

@@ -67,4 +67,4 @@ Call `laa:migrate-sites` again with `discoverOnly: true`. Nothing should come ba
 Call the **Workflow** tool with `name: "laa:review-panel"` and `args: { base: <branch point>, requirements: "Mechanical migration: <change>. Must not change behavior. Recipe: <recipe>" }`. Fix confirmed findings and commit.
 
 ## 7. Close the loop
-Run the `laa:retro` skill. Then end with the closing report: sites changed, sites skipped (with reasons), the migration branch, and follow-ups. In **Next**, offer to open a PR. A recipe that worked well is a good candidate for a repo-local skill (see `laa:forge`).
+Run the `laa:retro` skill. Then end with the closing report: sites changed, sites skipped (with reasons), the migration branch, follow-ups, and the learnings the retro logged. In **Next**, offer to open a PR. A recipe that worked well is a good candidate for a repo-local skill (see `laa:forge`).
