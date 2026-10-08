@@ -81,8 +81,8 @@ declare module 'claude-code' {
       pipeline: Pipeline | null
       run: Run | null
       nextUp: NextUp | null
-      // Open learnings before this turn first wrote learnings.md; the turn's end toasts what it added.
-      learningsBefore: number | null
+      // The learnings.md this turn first wrote, and its open entries before that; the turn's end toasts what it added.
+      learningsBefore: { file: string; count: number } | null
     }
   }
 }

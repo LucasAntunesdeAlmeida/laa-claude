@@ -66,6 +66,13 @@ describe('status band', () => {
     await ui.unmount()
   })
 
+  test('keeps a muted map quiet while it is under 100 commits stale', async ($, on) => {
+    await setUp($, on, { branch: 'feat/export', mapAge: 60, store: { 'mutedMap:c:/r': true } })
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect(await ui.find({ type: 'Text', text: /project map/ })).toBeUndefined()
+    await ui.unmount()
+  })
+
   test('brings a muted map back once it is 100 commits stale', async ($, on) => {
     await setUp($, on, { branch: 'feat/export', mapAge: 120, store: { 'mutedMap:c:/r': true } })
     const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })

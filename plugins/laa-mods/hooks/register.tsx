@@ -5,7 +5,7 @@ import type { Finding, Learning, Learnings, Run, Status } from '../types'
 import {
   commitDir, countOpenHigh, countOpenLearnings, ENGINES, gateOfQuestions, HELP, isUnder, journalFile, laaSkillOf,
   LOCAL_DIR, nextActionOf, parentOf, parseFindings, parseJournal, parseLearnings, PIPELINES, progressOf, rejectLearning,
-  resolveFrom, REVIEW_FILE, setFindingStatus, slash, suggestionFor, TRACKED,
+  resolveFrom, REVIEW_FILE, setFindingStatus, slash, stillOpen, suggestionFor, TRACKED,
 } from './git'
 import type { Progress, Repo } from './git'
 
@@ -74,15 +74,27 @@ async function repoAt($: Engine, path: string): Promise<Repo | null> {
   const top = await git($, dir, 'rev-parse', '--show-toplevel')
   if (!top.ok || !top.out) return null
   const root = top.out
-  const [branch, head, origin, isAdopted] = await Promise.all([
+  const [branch, head, origin, common, hasLearnings, hasMap] = await Promise.all([
     git($, root, 'symbolic-ref', '-q', '--short', 'HEAD'),
     git($, root, 'rev-parse', '-q', '--verify', 'HEAD'),
     git($, root, 'symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD'),
-    $.fs.exists(`${root}/.claude/laa`),
+    git($, root, 'rev-parse', '--path-format=absolute', '--git-common-dir'),
+    // Adopted means laa's committed state is there; a folder holding only local state doesn't count.
+    $.fs.exists(`${root}/${LEARNINGS_FILE}`),
+    $.fs.exists(`${root}/${MAP_FILE}`),
   ])
   const name = branch.ok && branch.out ? branch.out : null
   const defaults = origin.ok && origin.out ? [origin.out.replace(/^[^/]+\//, '')] : ['main', 'master']
-  return { top: root, branch: name, hasCommits: head.ok, isDefault: name !== null && defaults.includes(name), isAdopted }
+  // The main checkout holds the git directory; from a worktree it's the parent of the common .git.
+  const main = common.ok && /\/\.git$/.test(slash(common.out)) ? slash(common.out).replace(/\/\.git$/, '') : root
+  return {
+    top: root,
+    main,
+    branch: name,
+    hasCommits: head.ok,
+    isDefault: name !== null && defaults.includes(name),
+    isAdopted: hasLearnings || hasMap,
+  }
 }
 
 // The repo when the guard refuses changes to it, else null.
@@ -105,12 +117,29 @@ async function guardFile($: Engine, guard: string, path: string) {
   return blocked($, repo, `Changing ${file}`, `editing ${baseName(file)}`)
 }
 
-// Before a write to learnings.md, note how many were open, so the turn's end can say what it added.
+// Before a write to learnings.md, note which file and how many were open, so the turn's end can say what it added.
 async function noteLearnings($: Engine, path: string) {
   const file = resolveFrom(await $.session.cwd(), path)
-  if (!slash(file).toLowerCase().endsWith(`/${LEARNINGS_FILE}`) || (await read($, learningsBefore)) !== null) return
-  const before = countOpenLearnings(await readText($, file))
+  if (!file.toLowerCase().endsWith(`/${LEARNINGS_FILE}`) || (await read($, learningsBefore)) !== null) return
+  const before = { file, count: countOpenLearnings(await readText($, file)) }
   await update($, learningsBefore, b => b ?? before)
+}
+
+// At the end of a main-loop turn: say how many learnings it added to the file it wrote.
+async function toastLearnings($: Engine) {
+  const before = await read($, learningsBefore)
+  if (!before) return
+  await update($, learningsBefore, () => null)
+  const after = countOpenLearnings(await readText($, before.file))
+  if (after > before.count) $.ui.toast(`${PRE}${plural(after - before.count, 'learning')} logged · ${after} open · /${LEARNINGS_COMMAND}`)
+}
+
+// A /clear starts a new conversation: nothing the last one was doing carries over.
+async function forgetConversation($: Engine) {
+  await update($, run, () => null)
+  await update($, nextUp, () => null)
+  await update($, pipeline, () => null)
+  await update($, learningsBefore, () => null)
 }
 
 const mutedKey = (top: string) => `mutedMap:${slash(top).toLowerCase()}`
@@ -122,7 +151,8 @@ async function statusOf($: Engine, repo: Repo): Promise<Status> {
     const count = last.ok && last.out ? await git($, repo.top, 'rev-list', '--count', `${last.out}..HEAD`) : null
     mapAge = count?.ok ? Number(count.out) || 0 : 0
   }
-  const journal = repo.branch ? parseJournal(await readText($, `${repo.top}/${journalFile(repo.branch)}`)) : null
+  // Journals live in the main checkout, so a run in a worktree and the main checkout see the same one.
+  const journal = repo.branch ? parseJournal(await readText($, `${repo.main}/${journalFile(repo.branch)}`)) : null
   return {
     branch: repo.branch,
     isDefault: repo.isDefault && repo.hasCommits,
@@ -130,7 +160,7 @@ async function statusOf($: Engine, repo: Repo): Promise<Status> {
     mapAge,
     isMapMuted: Boolean(await $.store.get(mutedKey(repo.top))),
     openHigh: countOpenHigh(await readText($, `${repo.top}/${REVIEW_FILE}`)),
-    paused: journal && journal.status !== 'done' && journal.branch === repo.branch ? journal : null,
+    paused: journal && journal.status !== 'done' && journal.status !== 'stopped' && journal.branch === repo.branch ? journal : null,
   }
 }
 
@@ -147,13 +177,16 @@ async function refresh($: Engine) {
 }
 
 // What a block of laa output says about the run: a mode line starts one, steps and gates move it,
-// and the closing report (its Next list) ends it.
+// and the closing report (a status line, then its Next list) ends it. A step line after the run
+// was dropped picks the pipeline back up.
 async function applyProgress($: Engine, p: Progress) {
   if (!p.skill && !p.step && !p.gate && !p.isClosing) return
+  const p0 = await read($, pipeline)
   await update($, run, (r): Run | null => {
     if (p.isClosing) return null
     let next = r
     if (p.skill && TRACKED.includes(p.skill) && next?.skill !== p.skill) next = { skill: p.skill, step: null, gate: null, engine: null }
+    if (!next && p.step && p0) next = { skill: p0.skill, step: null, gate: null, engine: null }
     if (!next) return null
     if (p.step) {
       const isSame = next.step?.n === p.step.n && next.step.last === p.step.last
@@ -199,7 +232,13 @@ async function loadFindings($: Engine, top: string) {
 }
 
 // The person pressed Fix: put a self-contained request for the fix in the prompt, for them to send.
-async function fixFindings($: Engine, entries: readonly Finding[]) {
+async function fixFindings($: Engine, top: string, chosen: readonly Finding[]) {
+  const entries = stillOpen(await readText($, `${top}/${REVIEW_FILE}`), chosen)
+  if (entries.length < chosen.length) {
+    $.ui.toast(`${PRE}last-review.md changed since the pane loaded it; reloaded.`)
+    await loadFindings($, top)
+    return
+  }
   const what = entries.map(f => `${f.tag} ${f.location} ${f.title}${f.fix ? ` → ${f.fix}` : ''}`).join('; ')
   const text = entries.length === 1
     ? `Fix this finding from the last review, then mark it fixed in ${REVIEW_FILE}: ${what}`
@@ -249,15 +288,16 @@ async function suggestNext($: Engine) {
 const stepText = (s: Run['step']) => (s ? ` ▸ ${s.n}/${s.last} ${s.title}` : '')
 
 // The state line /laa-help opens with.
-const headerOf = (s: Status | null) => {
-  if (!s) return `${PRE}no laa state in this repo`
+const headerOf = (repo: Repo | null, s: Status | null) => {
+  if (!repo) return `${PRE}not in a git repository`
+  if (!s) return `${PRE}${baseName(repo.top)} · not adopted by laa yet`
   const map = s.mapAge === null ? 'no project map' : `map ${plural(s.mapAge, 'commit')} old`
   return `${PRE}${s.branch ?? 'detached HEAD'} · ${map} · ${plural(s.openLearnings, 'open learning')} · ${plural(s.openHigh, 'high finding')} open`
 }
 
 // /laa-help as Markdown: the command's transcript row, and what the model reads of it.
-function helpText(s: Status | null, allowed: boolean) {
-  const lines = [headerOf(s), '']
+function helpText(repo: Repo | null, s: Status | null, allowed: boolean) {
+  const lines = [headerOf(repo, s), '']
   for (const g of HELP) {
     lines.push(`**${g.group}**`)
     for (const [command, what] of g.items) lines.push(`- \`${command}\` ${what}`)
@@ -265,10 +305,17 @@ function helpText(s: Status | null, allowed: boolean) {
   }
   lines.push(`**Engines** (the entry skills run these; typed alone, each does one stage): ${ENGINES.join(' · ')}`)
   lines.push(`**Session** \`/${ALLOW_COMMAND}\`: edits on the default branch are ${allowed ? 'allowed' : 'blocked'}`)
-  const suggested = suggestionFor(s, s !== null)
+  const suggested = repo ? suggestionFor(s, repo.isAdopted) : null
   if (suggested) lines.push('', `**Suggested** \`${suggested.command}\`: ${suggested.why}`)
   return lines.join('\n')
 }
+
+// The lines of a /laa-help row that hold the state at the time it ran, so the drawn row never changes afterwards.
+const helpStateOf = (text: string) => ({
+  header: text.split('\n')[0] ?? '',
+  session: /^\*\*Session\*\* `([^`]+)`: (.+)$/m.exec(text),
+  suggested: /^\*\*Suggested\*\* `([^`]+)`: (.+)$/m.exec(text),
+})
 
 const tagColor = (tag: string) => (tag === 'CRIT' || tag === 'HIGH' ? C.danger : tag === 'MED' ? C.warning : undefined)
 
@@ -309,8 +356,9 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: HELP_COMMAND }, async $ => {
+    const repo = await repoAt($, await $.session.cwd())
     await refresh($)
-    return { text: helpText(await read($, status), await read($, allowMain)) }
+    return { text: helpText(repo, repo?.isAdopted ? await read($, status) : null, await read($, allowMain)) }
   })
 
   on('command.run', { command: LEARNINGS_COMMAND }, async ($, e) => {
@@ -388,9 +436,9 @@ export const register: Register = (on, options) => {
     try {
       if (e.door === 'response' && e.message.type === 'assistant') {
         await applyProgress($, progressOf(textOf(e.message.content)))
-      } else if (e.door === 'delivery') {
-        const text = textOf(e.message.content)
-        await update($, run, r => (r?.engine && text.includes(r.engine) ? { ...r, engine: null } : r))
+      } else if (e.door === 'delivery' || (e.origin as { kind?: string }).kind === 'task-notification') {
+        // A background task finished (a workflow's notification, folded into a turn or starting its own).
+        await update($, run, r => (r?.engine ? { ...r, engine: null } : r))
       }
     } catch {
       // A row the band can't read leaves it as it was.
@@ -405,22 +453,25 @@ export const register: Register = (on, options) => {
       return next(e)
     }
     await applyProgress($, progressOf(e.answer))
+    // A turn ends mid-run only to wait on a text gate or a background workflow; otherwise the run is over,
+    // whether it closed with a report or stopped (Stop at a gate, a resume with nothing to resume).
+    await update($, run, r => (r && (r.gate || r.engine) ? r : null))
     const command = nextActionOf(e.answer)
     await update($, nextUp, () => (command ? { text: command, isNudged: false } : null))
-
-    const before = await read($, learningsBefore)
-    if (before === null) {
-      void refresh($)
-    } else {
-      await update($, learningsBefore, () => null)
-      await refresh($)
-      const after = (await read($, status))?.openLearnings ?? before
-      if (after > before) $.ui.toast(`${PRE}${plural(after - before, 'learning')} logged · ${after} open · /${LEARNINGS_COMMAND}`)
-    }
+    await toastLearnings($)
+    void refresh($)
+    // The model may have marked findings fixed: keep an open pane current.
+    const shown = await read($, findings)
+    if (shown) await loadFindings($, shown.repo)
 
     const p = await read($, pipeline)
     if (p && p.hasCommitted && !p.isNudged) void $.clock.after(400, () => void suggestRetro($))
     else if (command) void $.clock.after(400, () => void suggestNext($))
+    return next(e)
+  })
+
+  on('session.end', async ($, e, next) => {
+    if (e.reason === 'clear') await forgetConversation($)
     return next(e)
   })
 
@@ -536,17 +587,16 @@ export const register: Register = (on, options) => {
     )
   })
 
-  // /laa-help's row: the same content as its text, with commands in the action color.
+  // /laa-help's row: its own text, with commands in the action color. The state lines come from the text,
+  // not from live state, so the row reads the same later as it did when it ran (and as the model read it).
   on('ui.render', { component: 'CommandOutput', props: { command: HELP_COMMAND } }, async ($, e, next) => {
     if (e.props.isErrored) return next(e)
-    const s = await read($, status)
-    const allowed = await read($, allowMain)
+    const { header, session, suggested } = helpStateOf(e.props.text)
     const { Box, Text } = $.ui.resolve(e)
     const width = Math.max(...HELP.flatMap(g => g.items.map(([command]) => command.length)))
-    const suggested = suggestionFor(s, s !== null)
     return (
       <Box key="laa-help" flexDirection="column">
-        <Text dimColor>{headerOf(s)}</Text>
+        <Text dimColor>{header}</Text>
         {HELP.map(g => (
           <Box key={g.group} flexDirection="column" marginTop={1}>
             <Text bold>{g.group}</Text>
@@ -560,13 +610,13 @@ export const register: Register = (on, options) => {
         ))}
         <Box key="engines" marginTop={1} flexDirection="column">
           <Text dimColor>{`Engines (the entry skills run these; typed alone, each does one stage): ${ENGINES.join(' · ')}`}</Text>
-          <Text dimColor>{`Session: /${ALLOW_COMMAND} · edits on the default branch are ${allowed ? 'allowed' : 'blocked'}`}</Text>
+          {session && <Text dimColor>{`Session: ${session[1]} · ${session[2]}`}</Text>}
         </Box>
         {suggested && (
           <Box key="suggested" marginTop={1}>
             <Text bold>Suggested </Text>
-            <Text color={C.action}>{suggested.command}</Text>
-            <Text dimColor>{`  ${suggested.why}`}</Text>
+            <Text color={C.action}>{suggested[1]}</Text>
+            <Text dimColor>{`  ${suggested[2]}`}</Text>
           </Box>
         )}
       </Box>
@@ -617,14 +667,14 @@ export const register: Register = (on, options) => {
             <Text>{f.title}</Text>
             {f.fix && <Text color={C.action}>→ {f.fix}</Text>}
             <Box>
-              <Button key={`fix${f.index}`} label="Fix" onPress={() => fixFindings($, [f])} />
+              <Button key={`fix${f.index}`} label="Fix" onPress={() => fixFindings($, list.repo, [f])} />
               <Button key={`dismiss${f.index}`} label="Dismiss" onPress={() => dismissFinding($, list.repo, f)} />
             </Box>
           </Box>
         ))}
         {high.length > 0 && (
           <Box marginTop={1}>
-            <Button key="fixHigh" label={`Fix all CRIT and HIGH (${high.length})`} variant="primary" hotkey="f" onPress={() => fixFindings($, high)} />
+            <Button key="fixHigh" label={`Fix all CRIT and HIGH (${high.length})`} variant="primary" hotkey="f" onPress={() => fixFindings($, list.repo, high)} />
           </Box>
         )}
       </Box>

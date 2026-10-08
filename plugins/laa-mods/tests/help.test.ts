@@ -38,6 +38,29 @@ describe('/laa-help', () => {
     await ui.unmount()
   })
 
+  test('keeps an earlier row as it was when the state changes later', async ($, on) => {
+    fakeRepo(on, { branch: 'feat/export', mapAge: 3 })
+    on('ui.render', ($, e) => $.ui.resolve(e).Box({ key: 'engine' }))
+    const out = await $.command.run(commandRun('laa-help'))
+    await $.command.run({ ...commandRun('laa-allow-main') })
+    const ui = await $.ui.mount({
+      plugin: 'laa-mods',
+      surface: 'terminal',
+      component: 'CommandOutput',
+      props: { command: 'laa-help', args: '', text: String(out.text), isErrored: false },
+    })
+    expect(await ui.find({ type: 'Text', text: /edits on the default branch are blocked/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /allowed/ })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test('says so outside a git repository, and suggests nothing', async ($, on) => {
+    fakeRepo(on, { cwd: 'C:/other' })
+    const out = await $.command.run(commandRun('laa-help'))
+    expect(String(out.text).split('\n')[0]).toBe('laa · not in a git repository')
+    expect(String(out.text)).not.toContain('**Suggested**')
+  })
+
   test('suggests the most pressing thing first', () => {
     expect(suggestionFor(null, false)?.command).toBe('/laa:adopt')
     expect(suggestionFor(status, true)).toBeNull()

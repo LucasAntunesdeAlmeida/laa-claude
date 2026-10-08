@@ -5,6 +5,8 @@ import type { Finding, Journal, Learning, Status, Step } from '../types'
 
 export type Repo = {
   top: string
+  // The main checkout: `top` itself, or the checkout a git worktree belongs to.
+  main: string
   branch: string | null
   hasCommits: boolean
   isDefault: boolean
@@ -25,8 +27,20 @@ export const parentOf = (p: string) => {
   return up === '' || /^[a-zA-Z]:$/.test(up) ? `${up}/` : up
 }
 
+// A path with its `.` and `..` segments collapsed, so a prefix check can't be walked out of.
+export const normalize = (p: string) => {
+  const [, root = '', rest = ''] = /^((?:[a-zA-Z]:)?\/?)(.*)$/.exec(slash(p)) ?? []
+  const parts: string[] = []
+  for (const part of rest.split('/')) {
+    if (part === '' || part === '.') continue
+    if (part === '..') parts.pop()
+    else parts.push(part)
+  }
+  return root + parts.join('/')
+}
+
 export const resolveFrom = (cwd: string, p: string) =>
-  isAbsolute(p) ? slash(p) : `${slash(cwd).replace(/\/+$/, '')}/${slash(p)}`
+  normalize(isAbsolute(p) ? p : `${slash(cwd).replace(/\/+$/, '')}/${slash(p)}`)
 
 // git prints "C:/x" on Windows while tools may pass "c:\x"; compare paths case-insensitively there.
 export const isUnder = (file: string, dir: string) => {
@@ -105,8 +119,9 @@ export const parseLearnings = (text: string): Learning[] =>
 export const rejectLearning = (text: string, index: number, title: string, reason: string) =>
   setStatus(text, index, block => titleOf(block) === title, `rejected (${reason})`)
 
-// One entry of last-review.md: `## <CRIT|HIGH|MED|LOW> · <file>:<line> · <title>`.
-const FINDING = /^## (CRIT|HIGH|MED|LOW) · (\S+) · (.+?)\s*$/m
+// One entry of last-review.md: `## <CRIT|HIGH|MED|LOW> · <file>:<line> · <title>`, backticks around the tag
+// or the location tolerated, and a location that may hold spaces.
+const FINDING = /^## `?(CRIT|HIGH|MED|LOW)`? · `?(.+?)`? · (.+?)\s*$/m
 
 // The open findings of the last review, in file order.
 export const parseFindings = (text: string): Finding[] =>
@@ -122,6 +137,12 @@ export const countOpenHigh = (text: string) => parseFindings(text).filter(f => f
 // The file with finding `index` set to `status`, or null when it's no longer the open finding at `location`.
 export const setFindingStatus = (text: string, index: number, location: string, status: string) =>
   setStatus(text, index, block => FINDING.exec(block)?.[2] === location, status)
+
+// Of `entries`, those still open in the file as it is now.
+export const stillOpen = (text: string, entries: readonly Finding[]) => {
+  const open = parseFindings(text)
+  return entries.filter(f => open.some(o => o.index === f.index && o.location === f.location))
+}
 
 const stepOf = (n: string | undefined, last: string | undefined, title: string | undefined): Step | null =>
   n && last && title ? { n: Number(n), last: Number(last), title: title.trim() } : null
@@ -153,7 +174,8 @@ export const progressOf = (text: string): Progress => {
     skill: /^\*\*laa:([a-z-]+)\*\* · /m.exec(text)?.[1] ?? null,
     step: stepOf(last?.[1], last?.[2], last?.[3]),
     gate: gates[gates.length - 1]?.[1]?.trim() ?? null,
-    isClosing: /^\*\*Next\*\*\s*$/m.test(text),
+    // A closing report: a ✓ or ✗ status line, then a Next list. A workflow report alone (no Next) doesn't close a run.
+    isClosing: /^\*\*[✓✗] [^\n]*\n[\s\S]*^\*\*Next\*\*\s*$/m.test(text),
   }
 }
 
@@ -191,7 +213,7 @@ export const ENGINES = ['investigate', 'design-panel', 'review-panel', 'implemen
 
 // The one command most worth running next in this repo, and why; null when nothing is due.
 export const suggestionFor = (s: Status | null, isAdopted: boolean): { command: string; why: string } | null => {
-  if (!isAdopted) return { command: '/laa:adopt', why: 'this repo has no laa state yet' }
+  if (!isAdopted) return { command: '/laa:adopt', why: 'laa has not mapped this repo yet' }
   if (!s) return null
   if (s.paused) {
     const at = s.paused.step ? ` at ${s.paused.step.n}/${s.paused.step.last} ${s.paused.step.title}` : ''
@@ -200,6 +222,8 @@ export const suggestionFor = (s: Status | null, isAdopted: boolean): { command: 
   if (s.openHigh > 0) return { command: '/laa-findings', why: `${s.openHigh} CRIT or HIGH review findings are still open` }
   if (s.openLearnings >= 3) return { command: '/laa:evolve', why: `${s.openLearnings} learnings are waiting` }
   if (s.mapAge === null && !s.isMapMuted) return { command: '/laa:adopt', why: 'there is no project map yet' }
-  if (s.mapAge !== null && s.mapAge >= 50) return { command: '/laa:adopt', why: `the project map is ${s.mapAge} commits old` }
+  if (s.mapAge !== null && s.mapAge >= 50 && (!s.isMapMuted || s.mapAge >= 100)) {
+    return { command: '/laa:adopt', why: `the project map is ${s.mapAge} commits old` }
+  }
   return null
 }

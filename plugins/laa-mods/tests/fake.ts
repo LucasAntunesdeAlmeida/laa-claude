@@ -1,5 +1,5 @@
 import { mock } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { EngineInterface, On } from 'claude-code'
 
 // An invented repo at C:/r, faked beneath the plugin: git answers, the file system, the store, and the session's directory.
 export type Fake = {
@@ -13,6 +13,10 @@ export type Fake = {
   // Other files in the repo, by their path relative to it.
   files?: Record<string, string>
   store?: Record<string, unknown>
+  // The session's directory; the repo's root unless given.
+  cwd?: string
+  // Runs inside every tool call the plugin lets through, before the tool answers: what a test reads mid-call.
+  duringTool?: ($: EngineInterface, e: { tool: string }) => Promise<void>
 }
 
 export const ROOT = 'C:/r'
@@ -25,7 +29,8 @@ export function fakeRepo(on: On, f: Fake = {}) {
   const hasCommits = f.hasCommits ?? true
   const isAdopted = f.isAdopted ?? true
   const dirs = new Set([ROOT, `${ROOT}/src`, 'C:/other'])
-  if (isAdopted) dirs.add(`${ROOT}/.claude/laa`)
+  // Adopted: laa's committed state is there (learnings.md, empty unless the test gives it).
+  if (isAdopted) dirs.add(`${ROOT}/.claude/laa`).add(LEARNINGS)
   if (f.mapAge !== undefined) dirs.add(`${ROOT}/.claude/laa/project-map.md`)
   const texts = new Map<string, string>()
   if (f.learnings !== undefined) texts.set(LEARNINGS, f.learnings)
@@ -35,7 +40,7 @@ export function fakeRepo(on: On, f: Fake = {}) {
   const fail = { ...ok(), exitCode: 1 }
 
   mock.store(on, f.store)
-  on('session.cwd', () => ({ value: ROOT }))
+  on('session.cwd', () => ({ value: f.cwd ?? ROOT }))
   on('fs.exists', ($, e) => ({ value: dirs.has(norm(e.path)) || texts.has(norm(e.path)) }))
   // The files as the plugin last wrote them, and every toast it showed.
   const seen = {
@@ -71,7 +76,10 @@ export function fakeRepo(on: On, f: Fake = {}) {
     return { value: fail }
   })
   // The tool itself: reached only when the plugin lets the call through.
-  on('tool.call', () => ({ result: 'ran' as never }))
+  on('tool.call', async ($, e) => {
+    await f.duringTool?.($, e)
+    return { result: 'ran' as never }
+  })
   return seen
 }
 

@@ -56,6 +56,13 @@ describe('default-branch guard', () => {
     expect(denied(await $.tool.call(edit(`${ROOT}/.claude/laa/learnings.md`)))).toBe(true)
   })
 
+  test("can't be walked out of with .. segments", async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(edit(`${ROOT}/.claude/laa/local/../../../src/a.go`)))).toBe(true)
+    expect(denied(await $.tool.call(edit(`${ROOT}/.git/../src/a.go`)))).toBe(true)
+    expect(denied(await $.tool.call(edit('.claude/laa/local/../../../src/a.go')))).toBe(true)
+  })
+
   test('resolves relative paths against the session directory', async ($, on) => {
     fakeRepo(on)
     expect(denied(await $.tool.call(edit('src/a.go')))).toBe(true)

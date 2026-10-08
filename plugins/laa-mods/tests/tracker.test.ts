@@ -3,6 +3,7 @@ import type { On } from 'claude-code'
 
 import { gateOfQuestions, nextActionOf, parseJournal, progressOf } from '../hooks/git'
 import { bash, fakeRepo, reply, turnEnd } from './fake'
+import type { Fake } from './fake'
 
 const BAND = {
   plugin: 'laa-mods',
@@ -14,8 +15,8 @@ const FOOTER = { plugin: 'laa-mods', component: 'SessionMode' as const, props: {
 // A repo on a task branch with a fresh map, the engine's own band and footer beneath the plugin,
 // and the turn's end answered as the engine would.
 // Returns the footer's mode labels as each draw handed them to the engine.
-async function world($: { tool: { call: (i: ReturnType<typeof bash>) => Promise<unknown> } }, on: On) {
-  fakeRepo(on, { branch: 'fix/invoice-500', mapAge: 1 })
+async function world($: { tool: { call: (i: ReturnType<typeof bash>) => Promise<unknown> } }, on: On, f: Fake = {}) {
+  fakeRepo(on, { branch: 'fix/invoice-500', mapAge: 1, ...f })
   const footers: string[][] = []
   on('ui.render', ($, e) => {
     if (e.component === 'SessionMode') footers.push([...e.props.modes])
@@ -23,6 +24,7 @@ async function world($: { tool: { call: (i: ReturnType<typeof bash>) => Promise<
   })
   on('skill.prompt', ($, e) => ({ text: e.text }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
+  on('session.end', ($, e) => ({ sessionId: e.sessionId }))
   await $.tool.call(bash('git status'))
   return footers
 }
@@ -89,32 +91,82 @@ describe('pipeline tracker', () => {
     await band.unmount()
   })
 
-  test('clears a gate asked through AskUserQuestion once it is answered', async ($, on) => {
-    await world($, on)
+  test('shows an AskUserQuestion gate while it waits, and clears it once answered', async ($, on) => {
+    // While the question waits, the band says so: the test mounts it from inside the tool call.
+    const during: boolean[] = []
+    await world($, on, {
+      duringTool: async (_, e) => {
+        if (e.tool !== 'AskUserQuestion') return
+        const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+        during.push(Boolean(await band.find({ type: 'Text', text: '★ laa:migrate · waiting on you: Approve the recipe?' })))
+        await band.unmount()
+      },
+    })
     await $.skill.prompt(skill('migrate'))
     await $.tool.call({ tool: 'AskUserQuestion', questions: [{ question: '★ Approve the recipe?', header: 'Recipe', multiSelect: false, options: [{ label: 'Approve', description: 'a' }, { label: 'Stop', description: 'b' }] }] })
+    expect(during).toEqual([true])
     const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
     expect(await band.find({ type: 'Text', text: /waiting on you/ })).toBeUndefined()
     expect(await band.find({ type: 'Text', text: '● laa:migrate' })).toBeDefined()
     await band.unmount()
   })
 
-  test('names the engine a workflow runs until its notification arrives', async ($, on) => {
-    await world($, on)
-    await $.skill.prompt(skill('fix'))
-    await $.tool.call({ tool: 'Workflow', name: 'laa:investigate', args: { bug: 'x' } })
-    let band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-    expect(await band.find({ type: 'Text', text: ' · engine investigate' })).toBeDefined()
-    await band.unmount()
-    await $.session.append({
-      message: { type: 'user', role: 'user', isMeta: true, content: [{ type: 'text', text: '<task-notification>workflow investigate completed</task-notification>' }] },
-      door: 'delivery',
-      origin: { kind: 'engine' } as never,
-      uuid: 'row-3',
+  for (const [door, origin] of [['delivery', { kind: 'engine' }], ['prompt', { kind: 'task-notification' }]] as const) {
+    test(`names the engine a workflow runs until a task notification arrives (${door})`, async ($, on) => {
+      await world($, on)
+      await $.skill.prompt(skill('fix'))
+      await $.tool.call({ tool: 'Workflow', name: 'laa:investigate', args: { bug: 'x' } })
+      let band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+      expect(await band.find({ type: 'Text', text: ' · engine investigate' })).toBeDefined()
+      await band.unmount()
+      await $.session.append({
+        message: { type: 'user', role: 'user', isMeta: true, content: [{ type: 'text', text: '<task-notification>task t1 completed</task-notification>' }] },
+        door,
+        origin: origin as never,
+        uuid: 'row-3',
+      })
+      band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+      expect(await band.find({ type: 'Text', text: / · engine/ })).toBeUndefined()
+      await band.unmount()
     })
-    band = await $.ui.mount({ ...BAND, surface: 'terminal' })
-    expect(await band.find({ type: 'Text', text: / · engine/ })).toBeUndefined()
-    await band.unmount()
+  }
+
+  test('keeps the run through a workflow report or a stray Next, and a step line brings a dropped pipeline back', async ($, on) => {
+    const footers = await world($, on)
+    const footer = async () => {
+      const ui = await $.ui.mount({ ...FOOTER, surface: 'terminal' })
+      await ui.unmount()
+      return footers[footers.length - 1]
+    }
+    await $.skill.prompt(skill('fix'))
+    await $.session.append(reply('**▸ 3/7 · Investigate**\n\n**✓ 2 of 3 root causes survived verification** · 5 angles\n- ✓ `a.go:1` nil'))
+    await $.session.append(reply('Options below.\n\n**Next**\n- `/laa:explore`', 'row-2'))
+    expect(await footer()).toEqual(['auto-accept', 'laa:fix 3/7'])
+    await $.session.append(reply('**✓ Fixed** · nil\n\n**Next**\n- say "open the PR"', 'row-3'))
+    expect(await footer()).toEqual(['auto-accept'])
+    await $.session.append(reply('**▸ 6/7 · Review** · reviewer', 'row-4'))
+    expect(await footer()).toEqual(['auto-accept', 'laa:fix 6/7'])
+  })
+
+  test('drops a run at a turn end that waits on nothing, keeps one waiting on a gate, and forgets it on /clear', async ($, on) => {
+    const footers = await world($, on)
+    const footer = async () => {
+      const ui = await $.ui.mount({ ...FOOTER, surface: 'terminal' })
+      await ui.unmount()
+      return footers[footers.length - 1]
+    }
+    await $.skill.prompt(skill('resume'))
+    expect(await footer()).toEqual(['auto-accept', 'laa:resume'])
+    await $.turn.complete(turnEnd('The run on this branch already finished.'))
+    expect(await footer()).toEqual(['auto-accept'])
+
+    await $.skill.prompt(skill('feature'))
+    await $.session.append(reply('**▸ 5/8 · Plan slices**\n\n**★ Approve the plan?** · 4 slices'))
+    await $.turn.complete(turnEnd('**★ Approve the plan?** · 4 slices'))
+    expect(await footer()).toEqual(['auto-accept', 'laa:feature ★'])
+
+    await $.session.end({ reason: 'clear', sessionId: 's1', resume: {} as never })
+    expect(await footer()).toEqual(['auto-accept'])
   })
 
   test("ignores subagents' rows and skills it doesn't track", async ($, on) => {

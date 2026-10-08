@@ -39,6 +39,14 @@ describe('saved review findings', () => {
     expect(countOpenHigh(REVIEW)).toBe(1)
   })
 
+  test('reads backticked tags and locations, and locations with spaces', () => {
+    const text = '## `HIGH` · `docs/how to run.md:3` · wrong port\n- status: open\n## LOW · `a.go:1` · name\n- status: open\n'
+    expect(parseFindings(text).map(f => [f.tag, f.location, f.title])).toEqual([
+      ['HIGH', 'docs/how to run.md:3', 'wrong port'],
+      ['LOW', 'a.go:1', 'name'],
+    ])
+  })
+
   test('sets exactly one finding, and refuses when the file moved on', () => {
     const next = setFindingStatus(REVIEW, 1, 'internal/billing/invoice.go:120', 'dismissed (x)')
     expect(next).toContain('- status: dismissed (x)')
@@ -84,6 +92,24 @@ describe('findings pane', () => {
     expect(seen.file('.claude/laa/local/last-review.md')).toContain('- status: dismissed (in the laa-findings pane)')
     expect(seen.toasts).toContain('laa · dismissed MED internal/billing/invoice.go:120')
     expect(await ui.find({ type: 'Text', text: 'query in a loop over line items' })).toBeUndefined()
+    await ui.unmount()
+  })
+
+  test("won't fill a fix for a finding fixed since the pane loaded, and reloads", async ($, on) => {
+    const seen = fakeRepo(on, { files: { '.claude/laa/local/last-review.md': REVIEW } })
+    const filled: string[] = []
+    on('ui.open', () => ({ value: { isPlaced: true } }))
+    on('prompt.fill', ($, e) => {
+      filled.push(e.text)
+      return { isFilled: true }
+    })
+    await $.command.run(commandRun('laa-findings'))
+    const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+    seen.setFile('.claude/laa/local/last-review.md', REVIEW.replace('- status: open', '- status: fixed (def5678)'))
+    await ui.press({ key: 'fix0' })
+    expect(filled).toEqual([])
+    expect(seen.toasts).toContain('laa · last-review.md changed since the pane loaded it; reloaded.')
+    expect(await ui.find({ type: 'Text', text: 'nil address dereference on legacy rows' })).toBeUndefined()
     await ui.unmount()
   })
 })
