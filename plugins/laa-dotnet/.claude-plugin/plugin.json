@@ -1,6 +1,6 @@
 {
   "name": "laa-dotnet",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": ".NET / C# stack pack for the laa toolkit: ASP.NET Core and EF Core conventions and a .NET-specific reviewer.",
   "author": {
     "name": "Lucas Almeida"

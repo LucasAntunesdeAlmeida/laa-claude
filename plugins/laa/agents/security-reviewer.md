@@ -3,6 +3,7 @@ name: security-reviewer
 description: Threat-models designs and reviews code or diffs for security issues (authn/authz, tenant isolation, injection, secrets, SSRF, deserialization, supply chain). Use in design review, PR review, and before shipping anything touching auth, payments, or user data.
 tools: Read, Grep, Glob, Bash
 model: opus
+effort: high
 memory: project
 color: red
 ---

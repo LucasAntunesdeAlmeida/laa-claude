@@ -3,6 +3,7 @@ name: verifier
 description: Adversarially verifies a single claim (a bug hypothesis, review finding, root cause, or "this fix works") by trying to refute it with evidence. Use to filter plausible-but-wrong conclusions before acting on them.
 tools: Read, Grep, Glob, Bash
 model: opus
+effort: high
 color: red
 ---
 

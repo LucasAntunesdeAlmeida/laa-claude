@@ -3,6 +3,7 @@ name: docs-reviewer
 description: Reviews README and onboarding docs for drift and accuracy. It catches setup, config, command, port, or version changes not reflected in the README, CONTRIBUTING, or .env.example, and finds invented or broken commands, broken relative links, and secrets or local paths in docs. Use in any review of a branch or PR, regardless of language.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: medium
 skills:
   - laa-docs:docs-conventions
 color: blue

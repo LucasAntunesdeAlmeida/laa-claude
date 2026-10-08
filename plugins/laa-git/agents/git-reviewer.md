@@ -3,6 +3,7 @@ name: git-reviewer
 description: Reviews a branch's git history and PR hygiene, catching non-conventional or misleading commit messages, unmarked breaking changes, mixed or WIP commits, committed secrets, local or generated files, AI attribution lines, bad branch names, and work committed on the default branch. Use in any review of a branch or PR, regardless of language.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: medium
 skills:
   - laa-git:git-conventions
 color: orange

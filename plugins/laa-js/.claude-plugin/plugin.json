@@ -1,6 +1,6 @@
 {
   "name": "laa-js",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "JavaScript / TypeScript (Node.js) stack pack for the laa toolkit: Node backend conventions and a JS/TS-specific reviewer.",
   "author": {
     "name": "Lucas Almeida"

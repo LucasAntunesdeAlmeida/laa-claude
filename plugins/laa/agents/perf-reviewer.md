@@ -3,6 +3,7 @@ name: perf-reviewer
 description: Finds performance and scalability problems in code, queries, and designs (N+1, unbounded queries, missing indexes, hot locks, sync I/O on hot paths, memory growth). Use in PR review and when a feature touches hot paths or large data.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: high
 color: orange
 ---
 

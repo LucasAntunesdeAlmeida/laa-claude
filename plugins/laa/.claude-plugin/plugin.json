@@ -1,7 +1,7 @@
 {
   "name": "laa",
   "displayName": "LAA Engineering Toolkit",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "Fan-out agents, workflows, and self-improving skills for backend developers, tech leads, and architects.",
   "author": {
     "name": "Lucas Almeida"

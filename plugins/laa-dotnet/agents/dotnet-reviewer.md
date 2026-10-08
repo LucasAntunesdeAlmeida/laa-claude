@@ -3,6 +3,7 @@ name: dotnet-reviewer
 description: .NET/C#-specific code reviewer that catches sync-over-async, missing CancellationToken, DI lifetime bugs (captive dependencies), EF Core N+1/tracking/query-filter issues, over-posting, nullable misuse, and disposal problems. Use in reviews of diffs containing .cs/.csproj files.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: medium
 skills:
   - laa-dotnet:dotnet-conventions
 color: purple

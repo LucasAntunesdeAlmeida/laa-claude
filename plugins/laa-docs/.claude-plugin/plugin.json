@@ -1,6 +1,6 @@
 {
   "name": "laa-docs",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Documentation practice pack for the laa toolkit: README and onboarding conventions plus a docs-drift reviewer. Works with any language.",
   "author": {
     "name": "Lucas Almeida"

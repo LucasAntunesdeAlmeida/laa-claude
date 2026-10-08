@@ -3,6 +3,7 @@ name: api-reviewer
 description: Reviews a change for API docs and tests drift. It catches endpoints added or changed without a matching OpenAPI spec update or Bruno request, status codes or fields that differ between handler, spec, and collection, requests without assertions or docs, hardcoded hosts, ids, or tokens, variables no environment defines, committed secrets, and a hand-edited generated spec. Use in any review of a branch or PR, regardless of language.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: medium
 skills:
   - laa-api:api-conventions
 color: magenta

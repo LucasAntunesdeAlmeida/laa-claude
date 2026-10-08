@@ -3,6 +3,7 @@ name: js-reviewer
 description: Node.js / TypeScript / JavaScript code reviewer that catches floating promises, async errors Express never sees, event-loop blocking, unvalidated input trusted through TypeScript types, any/as/! holes, prototype pollution, N+1 and raw-SQL injection, float money math, and missing timeouts. Use in reviews of diffs containing .ts, .js, .mjs, or .cjs files.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: medium
 skills:
   - laa-js:js-conventions
 color: green

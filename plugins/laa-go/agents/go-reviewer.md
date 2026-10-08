@@ -3,6 +3,7 @@ name: go-reviewer
 description: Go-specific code reviewer that catches goroutine leaks, context misuse, error wrapping mistakes, nil-interface traps, data races, defer-in-loop, slice aliasing, and non-idiomatic APIs. Use in reviews of diffs containing .go files.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: medium
 skills:
   - laa-go:go-conventions
 color: cyan

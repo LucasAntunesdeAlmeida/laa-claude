@@ -4,7 +4,7 @@ export const meta = {
   whenToUse: 'Called by /laa:build and /laa:feature, or typed as /laa:design-panel <requirements> for a standalone architecture decision. args: { requirements, context?, lenses? }',
   phases: [
     { title: 'Propose', detail: 'one architect per lens' },
-    { title: 'Judge', detail: 'independent judges score every proposal' },
+    { title: 'Judge', detail: 'independent judges score every proposal', model: 'opus' },
     { title: 'Synthesize', detail: 'merge the winner with the best ideas from the others' },
     { title: 'Deep-dive', detail: 'data model, API contract, threat model, scale risks, infra' },
   ],
@@ -77,7 +77,7 @@ phase('Judge')
 const judgeLenses = ['a pragmatic CTO of a 5-person startup', 'a principal engineer who will be on call for this system']
 const judgments = (await parallel(judgeLenses.map((who, j) => () =>
   spawn(`${brief}\n\nYou are ${who}. Score every proposal against the requirements. Be critical.\n\n${listing}`,
-    { label: `judge:${j + 1}`, phase: 'Judge', schema: SCORES })))).filter(Boolean)
+    { label: `judge:${j + 1}`, phase: 'Judge', model: 'opus', effort: 'high', schema: SCORES })))).filter(Boolean)
 
 const totals = proposals.map((_, i) => {
   const mine = judgments.flatMap(j => j.scores).filter(s => s.proposal === i + 1)

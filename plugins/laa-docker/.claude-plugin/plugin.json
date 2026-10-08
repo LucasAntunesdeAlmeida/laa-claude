@@ -1,6 +1,6 @@
 {
   "name": "laa-docker",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Docker practice pack for the laa toolkit: when Docker is available, run dependencies, tests, and bug reproductions in containers so they behave the same on every machine. Plus a reviewer for local-environment drift. Works with any language.",
   "author": {
     "name": "Lucas Almeida"

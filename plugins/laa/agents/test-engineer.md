@@ -3,6 +3,7 @@ name: test-engineer
 description: Writes and runs tests, including failing reproductions for bugs, acceptance tests from Given/When/Then criteria, and regression tests. Use to reproduce a bug before fixing it, to cover a new feature, or to find untested edge cases.
 tools: Read, Grep, Glob, Bash, Edit, Write
 model: sonnet
+effort: medium
 color: purple
 ---
 

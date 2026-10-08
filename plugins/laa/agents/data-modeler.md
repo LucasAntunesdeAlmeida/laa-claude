@@ -2,7 +2,8 @@
 name: data-modeler
 description: Designs or reviews relational/document data models, migrations, indexes, and multi-tenant isolation. Use when a feature adds or changes persistent state, or to review a schema for integrity and performance issues.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: opus
+effort: high
 color: blue
 ---
 

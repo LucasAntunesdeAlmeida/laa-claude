@@ -3,6 +3,7 @@ name: architect
 description: Designs a system or feature architecture from requirements and existing code, optimizing for a stated lens (simplicity, scale, cost, delivery speed, or evolvability). Returns components, data flow, key decisions with trade-offs, and a build sequence. Fan out several with different lenses and compare.
 tools: Read, Grep, Glob, Bash, WebSearch, WebFetch
 model: opus
+effort: high
 color: green
 ---
 

@@ -3,9 +3,9 @@ export const meta = {
   description: 'Map a repository in parallel (one explorer per subsystem), synthesize a project map, and recommend repo-specific agents/skills/hooks',
   whenToUse: 'Called by /laa:adopt, or typed as /laa:map-repo [focus]. args: { areas?: [{ name, paths }], focus?, codeIntel? }',
   phases: [
-    { title: 'Scout', detail: 'identify subsystems' },
+    { title: 'Scout', detail: 'identify subsystems', model: 'sonnet' },
     { title: 'Explore', detail: 'one explorer per subsystem' },
-    { title: 'Synthesize', detail: 'project map + automation recommendations' },
+    { title: 'Synthesize', detail: 'project map + automation recommendations', model: 'sonnet' },
   ],
 }
 
@@ -79,7 +79,7 @@ if (!scout.areas.length) {
     (input.codeIntel ? `CODE INTELLIGENCE (chosen by the user): ${input.codeIntel}. ` : 'Report the code-intelligence tool in use as codeIntel: graphify if graphify-out/graph.json exists, else "none". ') +
     'If graphify is in use, run `graphify update .` first (incremental, no LLM; you are the only agent allowed to), then read ' +
     'graphify-out/GRAPH_REPORT.md and use its communities as candidate subsystems: merge tiny ones, split oversized ones.',
-    { label: 'scout', phase: 'Scout', schema: AREAS })
+    { label: 'scout', phase: 'Scout', model: 'sonnet', effort: 'low', schema: AREAS })
 }
 const codeIntel = input.codeIntel || scout.codeIntel || 'none'
 log(`Stack: ${scout.stack}. Code intelligence: ${codeIntel}. Exploring ${scout.areas.length} area(s)`)
@@ -101,6 +101,6 @@ const synth = await agent(
   'a skill encoding a repeated multi-step procedure (adding an endpoint, a migration, a new tenant setting), a workflow for a repeatable ' +
   'fan-out over many similar units (audit every handler for tenant checks, review each bounded context), a hook that enforces a convention ' +
   '(format on edit, block edits to generated code), or CLAUDE.md rules. Every recommendation must cite evidence from the maps. Max 8, highest value first.',
-  { label: 'synthesize', phase: 'Synthesize', schema: SYNTH })
+  { label: 'synthesize', phase: 'Synthesize', model: 'sonnet', effort: 'high', schema: SYNTH })
 
 return { stack: scout.stack, commands: scout.commands || {}, ...synth }

@@ -3,6 +3,7 @@ name: python-reviewer
 description: Python-specific code reviewer that catches blocking calls in async code, unawaited coroutines, lost task references, mutable default arguments, swallowed exceptions, SQLAlchemy session and N+1 misuse, missing validation, unsafe deserialization, and typing holes. Use in reviews of diffs containing .py files.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: medium
 skills:
   - laa-python:python-conventions
 color: yellow

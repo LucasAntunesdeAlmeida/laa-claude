@@ -3,6 +3,7 @@ name: api-designer
 description: Designs or reviews API contracts (REST/OpenAPI, gRPC, events) covering resources, errors, pagination, idempotency, versioning, and auth scopes. Use when adding endpoints or public/async contracts.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: high
 color: blue
 ---
 

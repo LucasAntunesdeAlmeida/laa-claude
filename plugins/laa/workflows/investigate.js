@@ -4,7 +4,7 @@ export const meta = {
   whenToUse: 'Called by /laa:fix for non-trivial bugs, or typed as /laa:investigate <bug description>. args: { bug, repro?, context?, angles?, thorough? }',
   phases: [
     { title: 'Investigate', detail: 'one investigator per angle' },
-    { title: 'Cluster', detail: 'merge duplicate hypotheses' },
+    { title: 'Cluster', detail: 'merge duplicate hypotheses', model: 'opus' },
     { title: 'Verify', detail: 'skeptics try to refute each root cause' },
   ],
 }
@@ -108,7 +108,7 @@ const clustered = await agent(
   `${brief}\n\nThese hypotheses came from independent investigators. Merge ones describing the same root cause, ` +
   `drop any that do not explain the exact symptom, and return at most 5 clusters ordered by likelihood.\n\n` +
   JSON.stringify(all, null, 2),
-  { label: 'cluster', phase: 'Cluster', schema: CLUSTERS })
+  { label: 'cluster', phase: 'Cluster', model: 'opus', effort: 'medium', schema: CLUSTERS })
 const clusters = (clustered && clustered.clusters) || []
 
 const LENSES = input.thorough
@@ -120,7 +120,7 @@ const verified = await parallel(clusters.map((c, i) => () =>
   parallel(LENSES.map(lens => () =>
     spawn(`${brief}\n\nCLAIMED ROOT CAUSE: ${c.rootCause}\nLOCATION: ${c.location}\nMECHANISM: ${c.mechanism}\n\n` +
       `Try to REFUTE this claim using the ${lens} lens.`,
-      { label: `verify:${i + 1}:${lens.split(':')[0]}`, phase: 'Verify', agentType: 'laa:verifier', schema: VERDICT })))
+      { label: `verify:${i + 1}:${lens.split(':')[0]}`, phase: 'Verify', agentType: 'laa:verifier', ...(input.thorough && { effort: 'xhigh' }), schema: VERDICT })))
     .then(vs => {
       const votes = vs.filter(Boolean)
       const confirmed = votes.filter(v => v.verdict === 'confirmed').length

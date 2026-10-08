@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: forge-agent-pins-effort
+context:
+  scaffold_script: fixture.sh

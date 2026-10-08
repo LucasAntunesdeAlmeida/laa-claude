@@ -3,6 +3,7 @@ name: product-analyst
 description: Turns a vague product idea or feature request into a crisp PRD with users, jobs-to-be-done, scope (MVP vs later), non-functional requirements, and open questions. Use at the start of /laa:build or /laa:feature.
 tools: Read, Grep, Glob, WebSearch, WebFetch
 model: opus
+effort: medium
 color: yellow
 ---
 

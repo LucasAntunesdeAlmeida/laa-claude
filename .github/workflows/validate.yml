@@ -27,6 +27,20 @@ jobs:
             claude plugin validate "./$p"
             echo "::endgroup::"
           done
+      - name: Check agents and workflow agents pin model and effort
+        run: |
+          fail=0
+          for f in plugins/*/agents/*.md; do
+            for k in model effort; do
+              grep -q "^$k: " "$f" || { echo "::error file=$f::agent frontmatter has no $k"; fail=1; }
+            done
+          done
+          # agent() options are one-line `{ label: ... }` literals; each needs an agentType or a model and an effort.
+          grep -n "{ label:" plugins/*/workflows/*.js | grep -v "agentType:" \
+            | grep -v "model: .*effort: " \
+            | awk -F: '{ print "::error file=" $1 ",line=" $2 "::agent() call without agentType sets no model and effort"; bad = 1 } END { exit bad }' \
+            || fail=1
+          exit $fail
       - name: Check shell scripts parse
         run: |
           git ls-files '*.sh' | while read -r f; do
