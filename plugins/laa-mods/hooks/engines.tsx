@@ -5,7 +5,7 @@
 import type { RenderElement } from 'claude-code'
 
 import type { EngineRun } from '../types'
-import { sanitize } from './draw'
+import { C, sanitize } from './draw'
 import type { Els } from './draw'
 import { phaseOf, PHASES } from './tables'
 
@@ -56,19 +56,23 @@ const textAt = (from: unknown, key: string) => {
 // The card with the task and run ids its launch answered with. `result` is the Workflow tool's own record,
 // read as an unknown: a result of another shape leaves the card as it was.
 export const launched = (card: EngineRun, result: unknown): EngineRun => {
-  const taskId = textAt(result, 'taskId')
-  const runId = textAt(result, 'runId')
-  return taskId === card.taskId && runId === card.runId ? card : { ...card, taskId: taskId ?? card.taskId, runId: runId ?? card.runId }
+  const taskId = textAt(result, 'taskId') ?? card.taskId
+  const runId = textAt(result, 'runId') ?? card.runId
+  return taskId === card.taskId && runId === card.runId ? card : { ...card, taskId, runId }
 }
 
 // Which card a spawn belongs to, by its id in `cards`: the Workflow call's, else the run's, else the only
-// engine still running; null when none of those names one, and the spawn is ignored.
+// engine still running, unless that one is known to be another run; null when none of those names one,
+// and the spawn is ignored.
 export const cardFor = (cards: Cards, spawn: Pick<Spawn, 'toolUseId' | 'runId'>): string | null => {
   if (spawn.toolUseId && cards[spawn.toolUseId]) return spawn.toolUseId
   const byRun = spawn.runId ? Object.keys(cards).find(id => cards[id]?.runId === spawn.runId) : undefined
   if (byRun) return byRun
   const live = running(cards)
-  return live.length === 1 ? live[0] ?? null : null
+  const only = live.length === 1 ? live[0] : undefined
+  const known = only ? cards[only]?.runId ?? null : null
+  const isOther = known !== null && spawn.runId !== '' && known !== spawn.runId
+  return only && !isOther ? only : null
 }
 
 // The cards after a batch of spawns: each counted on its card, under its role when it has one. One pass
@@ -169,17 +173,87 @@ export const phaseNow = (card: EngineRun): string | null => {
   return phases[Math.max(-1, ...reached)] ?? null
 }
 
-// STUB (slice B draws it). The card under a laa engine's Workflow row, on every surface, from Box and Text only:
-//   <Box key="laa-wf" flexDirection="column">
-//     {inner}                                   the engine's own row, as `next(e)` drew it
-//     <Box key="laa-card" flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
-//       name (bold) · "laa engine" · agent count (dim)
-//       the phases: ✓ done, ● current, ○ to come; once the run ended, a phase no agent worked in is a dim label with no glyph
-//       the roles and their counts (dim, truncated): investigate ×5 · cluster · verify ×10
-//       the result once there is one: `success` for a leading ✓, `warning` for ▲ or ✗, never `error`;
-//       with no report, `✓ completed` or (in `warning`) `✗ failed`
-//     </Box>
-//   </Box>
+const SEP = ' ━ '
+
+// How a phase stands on the card: finished, the one running now, still to come, or never worked in.
+type Mark = 'done' | 'now' | 'todo' | 'skipped'
+
+const GLYPH: Readonly<Record<Mark, string>> = { done: '✓ ', now: '● ', todo: '○ ', skipped: '' }
+
+// Each phase's mark. While the run goes on: ✓ before the phase it has reached, ● on it, ○ after (all ○
+// before any agent started). Once it completed: ✓ where an agent worked, skipped where none did. A run that
+// failed or was stopped did not finish the phase it had reached: that one stays ○ with the ones after it.
+const marksOf = (card: EngineRun, phases: readonly string[]): Mark[] => {
+  const now = phases.indexOf(phaseNow(card) ?? '')
+  const worked = new Set(Object.keys(card.roles).map(role => phaseOf(card.name, role)))
+  return phases.map((phase, i) => {
+    if (card.state === 'done') return worked.has(phase) ? 'done' : 'skipped'
+    if (i < now) return 'done'
+    return i === now && card.state === 'running' ? 'now' : 'todo'
+  })
+}
+
+// The roles and how many agents each started: `investigate ×5 · cluster · verify ×10`; '' when none is known.
+const rolesLine = (roles: Readonly<Record<string, number>>) =>
+  Object.entries(roles).filter(([, n]) => n > 0).map(([role, n]) => (n === 1 ? role : `${role} ×${n}`)).join(' · ')
+
+// The card's last line: the report's first line, toned by the glyph it opens with, else how the run ended;
+// null while it runs. A failure is `warning`, never `error`: the card is not the one red item on screen.
+const resultOf = (card: EngineRun): { text: string; color?: typeof C.success | typeof C.warning; isDim?: boolean } | null => {
+  if (card.result) {
+    const glyph = card.result.charAt(0)
+    return { text: card.result, color: glyph === '✓' ? C.success : glyph === '▲' || glyph === '✗' ? C.warning : undefined }
+  }
+  if (card.state === 'done') return { text: '✓ completed', color: C.success }
+  if (card.state === 'failed') return { text: '✗ failed', color: C.warning }
+  // A notification that named a way of ending is a stop; one that matched nothing says only that it is over.
+  if (card.state === 'ended') return card.status ? { text: '✗ stopped', color: C.warning } : { text: 'ended · no report', isDim: true }
+  return null
+}
+
+// The card under a laa engine's Workflow row, on every surface, from Box and Text only: `inner` (the
+// engine's own row, as `next(e)` drew it) first, then a dim round frame with the engine's name and agent
+// count, its phases, its roles, and its result once it has one.
 // Returns null to leave the row as the engine drew it; register.tsx then draws `inner` alone, and has already
 // passed on a workflow that is no laa engine, a call with no card, and an errored or interrupted row.
-export const engineCard = (_els: Els, _inner: RenderElement, _card: EngineRun): RenderElement | null => null
+export const engineCard = (els: Els, inner: RenderElement, card: EngineRun): RenderElement | null => {
+  try {
+    const { Box, Text } = els
+    const phases = PHASES[card.name]
+    if (!phases || typeof Box !== 'function' || typeof Text !== 'function') return null
+    if (!Number.isInteger(card.count) || card.count < 0) return null
+    const marks = marksOf(card, phases)
+    const roles = card.count > 0 ? rolesLine(card.roles) : ''
+    const result = resultOf(card)
+    const agents = card.count > 0 ? ` · ${card.count} agent${card.count === 1 ? '' : 's'}` : ''
+    // A prop is given only where it says something: toned, dim, or neither.
+    const line = !result ? null
+      : result.color ? <Text key="result" color={result.color} wrap="truncate-end">{result.text}</Text>
+      : result.isDim ? <Text key="result" dimColor wrap="truncate-end">{result.text}</Text>
+      : <Text key="result" wrap="truncate-end">{result.text}</Text>
+    return (
+      <Box key="laa-wf" flexDirection="column">
+        {inner}
+        <Box key="laa-card" flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
+          <Box key="head">
+            <Text bold>{card.name}</Text>
+            <Text dimColor>{` · laa engine${agents}`}</Text>
+          </Box>
+          <Box key="phases">
+            {phases.flatMap((phase, i) => {
+              const mark = marks[i] ?? 'todo'
+              const text = `${GLYPH[mark]}${phase}`
+              // Only the phase running now is in the default color.
+              const label = mark === 'now' ? <Text key={`phase${i}`}>{text}</Text> : <Text key={`phase${i}`} dimColor>{text}</Text>
+              return i === 0 ? [label] : [<Text key={`sep${i}`} dimColor>{SEP}</Text>, label]
+            })}
+          </Box>
+          {roles !== '' && <Text key="roles" dimColor wrap="truncate-end">{roles}</Text>}
+          {line}
+        </Box>
+      </Box>
+    )
+  } catch {
+    return null
+  }
+}
