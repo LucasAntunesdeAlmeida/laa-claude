@@ -662,7 +662,7 @@ export const register: Register = (on, options) => {
 
   // A workflow runs in the background: show its name until its notification arrives or the run moves on.
   // Under `visuals: full` a laa engine also gets a card, made before the launch answers because the run's
-  // first agents can start before it does; a refused or failed launch takes the card away again.
+  // first agents can start before it does; a launch that is refused, fails, or throws takes the card away again.
   on('tool.call', { tool: 'Workflow' }, async ($, e, next) => {
     const name = (e.name ?? '').replace(/^laa:/, '')
     const id = isFull && ENGINES.includes(name) && e.tool_use_id ? e.tool_use_id : null
@@ -673,7 +673,20 @@ export const register: Register = (on, options) => {
         // No card: the row draws as the engine draws it.
       }
     }
-    const ran = await next(e)
+    let ran: Awaited<ReturnType<typeof next>>
+    try {
+      ran = await next(e)
+    } catch (thrown) {
+      // The launch threw: there is no run to show, and the error is the caller's to see.
+      if (id) {
+        try {
+          await update($, engines, cards => dropCard(cards, id))
+        } catch {
+          // The card stays, as a run that never reports.
+        }
+      }
+      throw thrown
+    }
     const isLaunched = !('deny' in ran) && !ran.isError
     if (name && isLaunched) await update($, run, r => (r ? { ...r, engine: name } : r))
     if (id) {

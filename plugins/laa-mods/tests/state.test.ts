@@ -70,6 +70,22 @@ describe('engine cards', () => {
     expect(state.engines).toMatchObject({ [WF.toolUseId]: { roles: { investigate: 1 }, count: 1, runId: WF.runId } })
   })
 
+  test('a launch that throws leaves no card behind, and the error goes on to the caller', async ($, on) => {
+    const { state } = await world($, on, {
+      duringTool: async (_, e) => {
+        if (e.tool === 'Workflow') throw new Error('the launch broke')
+      },
+    })
+    let isThrown = false
+    try {
+      await $.tool.call(wfCall())
+    } catch {
+      isThrown = true
+    }
+    expect(isThrown).toBe(true)
+    expect(state.engines).toEqual({})
+  })
+
   test('finds the card of a spawn that names only its run, and of one that names nothing while one engine runs', async ($, on) => {
     const { clock, state } = await world($, on)
     await $.tool.call(wfCall())
