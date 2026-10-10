@@ -101,6 +101,7 @@ describe('closingOf', () => {
     'a trailing newline': `${FIXED}\n`,
     'a degraded line above the status line': DEGRADED,
     'a failed report with Tried and Cause': FAILED,
+    'one empty line above the status line': `\n${FIXED}`,
     'two empty lines above the status line': `\n\n${FIXED}`,
     'a workflow report above the closing one': `**✓ 2 of 3 root causes survived** · 5 angles\n- ✓ \`a.go:1\` nil address\n\n${FIXED}`,
     'a numbered Next list with a continued item': '**✓ Migrated** · 12 sites\n**Next**\n\n1. `/laa:review`: check it\n   before the PR\n2. say "push"\n',
@@ -110,7 +111,7 @@ describe('closingOf', () => {
     test(`its parts join back to the block: ${name}`, () => {
       const c = closingOf(text)
       if (!c) throw new Error('not read as a closing report')
-      expect(c.pre === '' ? `${c.statusRaw}\n${c.rest}` : `${c.pre}\n${c.statusRaw}\n${c.rest}`).toBe(text)
+      expect(c.pre === null ? `${c.statusRaw}\n${c.rest}` : `${c.pre}\n${c.statusRaw}\n${c.rest}`).toBe(text)
       expect(text.endsWith(c.next)).toBe(true)
     })
   }
@@ -120,6 +121,7 @@ describe('closingOf', () => {
       pre: 'Done.\n',
       statusRaw: '**✓ Fixed** · nil address',
       status: '✓ Fixed · nil address',
+      key: expect.stringMatching(/^\*\*✓ Fixed\*\* · nil address #[0-9a-z]{1,7}$/),
       ok: true,
       rest: FIXED.split('\n').slice(1).join('\n'),
       next: '- `/laa:review`: check the branch before the PR\n- say "open the PR": drafts it with the git conventions',
@@ -138,10 +140,34 @@ describe('closingOf', () => {
       'a Next followed by prose': '**✓ Fixed** · nil address\n\n**Next**\nRun the review.',
       'text after the list': `${FIXED}\n\nTell me if you want the PR.`,
       'a degraded line alone': '**▲ Agent mode** · weaker\n\n**Next**\n- `/laa:retro`',
-      'one empty line above the status line, which would not join back': `\n${FIXED}`,
       'CRLF line ends': FIXED.replace(/\n/g, '\r\n'),
     }
     for (const [name, text] of Object.entries(NOT)) expect(closingOf(text), name).toBeNull()
+  })
+
+  test('tells no line above the status line from one empty line above it', () => {
+    expect(closingOf(FIXED)?.pre).toBeNull()
+    expect(closingOf(`\n${FIXED}`)?.pre).toBe('')
+    expect(closingOf(`\n\n${FIXED}`)?.pre).toBe('\n')
+  })
+
+  test('draws the status line as plain text: inline code without its backticks, a link as its label', () => {
+    const under = '\n- **Cause** a retried webhook\n\n**Next**\n- say "retry"'
+    const coded = closingOf(`**✗ Tests still fail** · \`internal/orders/cancel.go:42\` and \`list.go:77\`${under}`)
+    expect(coded?.status).toBe('✗ Tests still fail · internal/orders/cancel.go:42 and list.go:77')
+    expect(coded?.statusRaw).toBe('**✗ Tests still fail** · `internal/orders/cancel.go:42` and `list.go:77`')
+    const linked = closingOf(`**✓ Opened the PR** · [orders#12](https://example.com/orders/pull/12) is ready${under}`)
+    expect(linked?.status).toBe('✓ Opened the PR · orders#12 is ready')
+    expect(linked?.statusRaw).toBe('**✓ Opened the PR** · [orders#12](https://example.com/orders/pull/12) is ready')
+  })
+
+  test('keys a report by its status line and what stands under it, not by what stands above', () => {
+    const a = closingOf('**✗ Tests still fail** · api\n- **Cause** a missing import\n\n**Next**\n- say "retry"')
+    const b = closingOf('**✗ Tests still fail** · api\n- **Cause** a stale cache\n\n**Next**\n- say "retry"')
+    const above = closingOf('Second try.\n\n**✗ Tests still fail** · api\n- **Cause** a missing import\n\n**Next**\n- say "retry"')
+    expect(a?.key).not.toBe(b?.key)
+    expect(above?.key).toBe(a?.key)
+    expect(a?.key.startsWith('**✗ Tests still fail** · api #')).toBe(true)
   })
 })
 
@@ -155,7 +181,9 @@ describe('isLaaClosing', () => {
   test("a report is laa's when its status line was recorded, or its Next list names a laa command in backticks", () => {
     const plain = closing(PLAIN_NEXT)
     expect(isLaaClosing(plain, [])).toBe(false)
-    expect(isLaaClosing(plain, ['**✓ Shipped** · other', plain.statusRaw])).toBe(true)
+    expect(isLaaClosing(plain, ['**✓ Shipped** · other #1', plain.key])).toBe(true)
+    // The same status line over another body is another report.
+    expect(isLaaClosing(plain, [plain.statusRaw, closing(`${PLAIN_NEXT} now`).key])).toBe(false)
     expect(isLaaClosing(closing(FIXED), [])).toBe(true)
     expect(isLaaClosing({ ...plain, next: '- `/laa-findings`: work through them' }, [])).toBe(true)
     expect(isLaaClosing({ ...plain, next: '- `/laa:review main..HEAD`: check it' }, [])).toBe(true)
@@ -256,6 +284,43 @@ describe('report card', () => {
     }
   })
 
+  test('frames a tracked report whose block opens with one empty line', async ($, on) => {
+    await world($, on)
+    const text = `\n${PLAIN_NEXT}`
+    await runClosing($, text)
+    const tree = await drawnOnAll($, text)
+    expect(tree).toContain('<Box borderColor="success" borderStyle="round" flexDirection="column" key="frame" paddingX=1>')
+    expect(tree).not.toContain('key="pre"')
+  })
+
+  test('draws no markdown above the frame when only spaces stand above the status line', async ($, on) => {
+    await world($, on)
+    const tree = await drawnOnAll($, `  \n\t\n${FIXED}`)
+    expect(tree).toContain('key="frame"')
+    expect(tree).not.toContain('key="pre"')
+  })
+
+  test('draws the status line without the backticks or the link target the model wrote in it', async ($, on) => {
+    await world($, on)
+    const under = '\n- **Cause** a retried webhook\n\n**Next**\n- `/laa:fix the retry`: try again'
+    expect(await drawnOnAll($, `**✗ Tests still fail** · \`internal/orders/cancel.go:42\`${under}`))
+      .toContain('<Text bold color="warning">"✗ Tests still fail · internal/orders/cancel.go:42"</Text>')
+    expect(await drawnOnAll($, `**✓ Opened the PR** · [orders#12](https://example.com/orders/pull/12)${under}`))
+      .toContain('<Text bold color="success">"✓ Opened the PR · orders#12"</Text>')
+  })
+
+  test("leaves a report too long for one drawing to the engine's own", async ($, on) => {
+    const handed = await world($, on)
+    const text = `**✓ Fixed** · nil address\n- **Log** ${'x'.repeat(100001)}\n\n**Next**\n- \`/laa:retro\`: capture what we learned`
+    for (const surface of ALL_SURFACES) {
+      handed.AssistantMessage = undefined
+      const ui = await $.ui.mount({ ...block(text), surface })
+      expect(show(await ui.drawn()), surface).toBe(ENGINE_OWN)
+      expect(handed.AssistantMessage).toEqual({ text, isFirstOfReply: true })
+      await ui.unmount()
+    }
+  })
+
   test('frames nothing under visuals: minimal', MINIMAL, async ($, on) => {
     const handed = await world($, on)
     await runClosing($, FIXED)
@@ -283,6 +348,30 @@ describe('one red item', () => {
 
     await runClosing($, PLAIN_NEXT, 'row-3')
     expect(await toneOf($, FAILED)).toBe('warning')
+    expect(await toneOf($, PLAIN_NEXT)).toBe('success')
+  })
+
+  // Two reports the same to the letter (status line and body) share a key, so both would draw red: accepted.
+  test('of two runs that failed with the same status line, only the newest is red', async ($, on) => {
+    await world($, on)
+    const first = '**✗ Tests still fail** · api\n- **Cause** a missing import\n\n**Next**\n- say "retry"'
+    const second = '**✗ Tests still fail** · api\n- **Cause** a stale cache\n\n**Next**\n- say "retry"'
+    await runClosing($, first)
+    await runClosing($, second, 'row-2')
+    expect(await toneOf($, first)).toBe('warning')
+    expect(await toneOf($, second)).toBe('error')
+  })
+
+  test('the same holds with a run that succeeded between them', async ($, on) => {
+    await world($, on)
+    const first = '**✗ Tests still fail** · api\n- **Cause** a missing import\n\n**Next**\n- say "retry"'
+    const third = '**✗ Tests still fail** · api\n- **Cause** a stale cache\n\n**Next**\n- say "retry"'
+    await runClosing($, first)
+    await runClosing($, PLAIN_NEXT, 'row-2')
+    expect(await toneOf($, first)).toBe('warning')
+    await runClosing($, third, 'row-3')
+    expect(await toneOf($, first)).toBe('warning')
+    expect(await toneOf($, third)).toBe('error')
     expect(await toneOf($, PLAIN_NEXT)).toBe('success')
   })
 

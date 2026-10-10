@@ -132,7 +132,7 @@ declare module 'claude-code' {
       theme: string | null
       // The engines this session launched, by the Workflow call's tool_use_id; the newest 20.
       engines: Record<string, EngineRun>
-      // The status lines of the closing reports this session's runs ended with; the newest 50.
+      // The keys (status line plus a hash of the body) of the closing reports this session's runs ended with; the newest 50.
       closings: string[]
       // The newest 50.
       turnTags: TurnTag[]

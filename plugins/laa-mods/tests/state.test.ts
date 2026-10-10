@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
+import { closingOf } from '../hooks/report'
 import {
   bash, commandRun, fakeRepo, notification, reply, ROOT, skill, spawnWf, turnEnd, WF, WF_LAUNCHED, WF_REPORT, wfCall,
 } from './fake'
@@ -162,7 +163,9 @@ describe('run history', () => {
     expect(state.closings).toBeUndefined()
     await $.session.append(reply(`Done.\n\n${CLOSING}`, 'row-3'))
     await $.turn.complete(turnEnd(`Done.\n\n${CLOSING}`))
-    expect(state.closings).toEqual(['**✓ Fixed** · nil address'])
+    // Recorded by its key: the status line, then a hash of what stands under it.
+    expect(state.closings).toEqual([closingOf(CLOSING)?.key])
+    expect(closingOf(CLOSING)?.key.startsWith('**✓ Fixed** · nil address #')).toBe(true)
   })
 
   test("keeps a turn's tag while its run goes on, and forgets everything on /clear", async ($, on) => {

@@ -6,14 +6,19 @@ import { sanitize } from './draw'
 import type { C, Els } from './draw'
 
 // A closing report cut into the parts its card draws. `pre`, `statusRaw`, and `rest` are the block's own
-// lines, untouched: joined with line breaks (`pre` left out when it is empty) they are the block again.
+// lines, untouched: joined with line breaks (`pre` left out when it is null) they are the block again.
 export type Closing = {
-  // Everything above the status line; '' when the block opens with it.
-  pre: string
-  // The status line as written (`**✓ Fixed** · nil address`): what register.tsx records and compares.
+  // Everything above the status line; null when the block opens with it ('' is one empty line above it).
+  pre: string | null
+  // The status line as written (`**✓ Fixed** · nil address`).
   statusRaw: string
-  // The status line without its `**`: the glyph, the title, then the rest of the line (`✓ Fixed · nil address`).
+  // The status line as its card draws it, in plain text: the glyph, the title, then the rest of the line,
+  // without the `**`, the backticks around inline code, or a link's target (`✓ Fixed · nil address`).
   status: string
+  // What tells this report from every other: the status line plus a short hash of what stands under it.
+  // It is what register.tsx records and compares, so two runs that end with the same status line stay two
+  // reports. Two reports the same to the letter share a key (and so, when both failed, both can draw red).
+  key: string
   // True for ✓, false for ✗.
   ok: boolean
   // Everything under the status line, the `**Next**` list included.
@@ -30,6 +35,16 @@ const NEXT = /^\*\*Next\*\*\s*$/
 const ITEM = /^\s*(?:[-*]|\d+\.)\s+\S/
 const CONTINUED = /^\s{2,}\S/
 
+// A short hash of a text (djb2, in base 36): enough to tell two reports under one status line apart.
+const hashOf = (text: string) => {
+  let h = 5381
+  for (let i = 0; i < text.length; i += 1) h = ((h << 5) + h + text.charCodeAt(i)) >>> 0
+  return h.toString(36)
+}
+
+// A line of markdown as the plain text a `<Text>` draws: inline code without its backticks, a link as its label.
+const plainOf = (line: string) => line.replace(/`([^`]+)`/g, '$1').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+
 // The block as a closing report, or null when it is not exactly one: the last `**✓ …**` or `**✗ …**` line,
 // a `**Next**` line somewhere under it, then a list (items, their indented continuations, blank lines) that
 // runs to the end of the block. A workflow's report (a status line with no Next) and a reply that goes on
@@ -40,29 +55,29 @@ export const closingOf = (text: string): Closing | null => {
   const s = lines.findLastIndex(l => STATUS.test(l))
   const m = STATUS.exec(lines[s] ?? '')
   if (!m) return null
-  // One empty line above the status line would read back as no line at all: such a block is left alone, so
-  // the three parts always join back to the block exactly.
-  if (s === 1 && lines[0] === '') return null
   const x = lines.findIndex((l, i) => i > s && NEXT.test(l))
   if (x < 0) return null
   const list = lines.slice(x + 1)
   const first = list.findIndex(l => l.trim() !== '')
   if (first < 0 || !ITEM.test(list[first] ?? '')) return null
   if (!list.slice(first + 1).every(l => l.trim() === '' || ITEM.test(l) || CONTINUED.test(l))) return null
+  const statusRaw = lines[s] ?? ''
+  const rest = lines.slice(s + 1).join('\n')
   return {
-    pre: lines.slice(0, s).join('\n'),
-    statusRaw: lines[s] ?? '',
-    status: `${m[1]} ${m[2]}${m[3]}`,
+    pre: s === 0 ? null : lines.slice(0, s).join('\n'),
+    statusRaw,
+    status: plainOf(`${m[1]} ${m[2]}${m[3]}`),
+    key: `${statusRaw} #${hashOf(rest)}`,
     ok: m[1] === '✓',
-    rest: lines.slice(s + 1).join('\n'),
+    rest,
     next: list.join('\n'),
   }
 }
 
-// Whether a closing report is laa's: this session recorded its status line when a laa run ended with it,
+// Whether a closing report is laa's: this session recorded its key when a laa run ended with it,
 // or (after a resume or a /clear, when nothing is recorded) its Next list names a laa command.
 export const isLaaClosing = (c: Closing, closings: readonly string[]) =>
-  closings.includes(c.statusRaw) || /`\/laa[:-][a-z-]+[^`\n]*`/.test(c.next)
+  closings.includes(c.key) || /`\/laa[:-][a-z-]+[^`\n]*`/.test(c.next)
 
 // The most text one drawing may carry; a longer report is left to the engine.
 const MAX_DRAWN = 100000
@@ -78,7 +93,7 @@ const MAX_DRAWN = 100000
 export const reportCard = (els: Els, c: Closing, tone: Tone): RenderElement | null => {
   if (!('Box' in els) || !('Text' in els) || !('Markdown' in els)) return null
   const { Box, Markdown, Text } = els
-  const pre = sanitize(c.pre)
+  const pre = sanitize(c.pre ?? '')
   // The status line is drawn as Text, which takes one line: a tab in it is drawn as a space.
   const status = sanitize(c.status).replace(/\s+/g, ' ').trim()
   const rest = sanitize(c.rest)
