@@ -121,4 +121,4 @@ const report = render(confirmed.length
     ...confirmed.map(f => `- \`${TAG[f.severity]}\` \`${f.file}:${f.line}\` ${f.title} → ${f.fix}`),
   ]
   : [`**✓ No findings** · ${dropped} refuted · ${dims}`])
-return { confirmed, refutedCount: dropped, report, degraded }
+return { report, degraded, confirmed, refutedCount: dropped }

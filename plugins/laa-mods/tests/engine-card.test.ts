@@ -96,6 +96,23 @@ const LIVE_SHAPED = [
   '<usage><agent_count>15</agent_count><agents_done>15</agents_done><agents_error>0</agents_error><duration_ms>90000</duration_ms></usage>',
 ].join('\n')
 
+// A workflow result too long for a notification: Claude Code keeps its first 8,000 characters and says where
+// the whole of it is. The engines return `report` first, so the cut never takes it.
+const cutAt8000 = (json: string) => `${json.slice(0, 8000)}... (truncated ${json.length - 8000} chars, full result in C:/r/out.json)`
+const CUT_REPORT = '2 of 5 root causes survived verification · 5 angles'
+const LONG_RESULT = {
+  report: `**${CUT_REPORT}**\n- ✓ \`pay/retry.go:31\` retry reuses the key of a failed charge · 2 confirmed, 0 refuted`,
+  degraded: [] as string[],
+  hypotheses: Array.from({ length: 40 }, (_, i) => ({ rootCause: `cause ${i}`, location: `pay/retry.go:${i + 1}`, mechanism: 'a retried webhook finds the old key '.repeat(8) })),
+}
+const CUT_SHAPED = [
+  `<task-id>${WF.taskId}</task-id>`,
+  `<tool-use-id>${WF.toolUseId}</tool-use-id>`,
+  '<status>completed</status>',
+  '<summary>Dynamic workflow "Engine · root-cause fan-out" completed</summary>',
+  `<result>${cutAt8000(JSON.stringify(LONG_RESULT))}</result>`,
+].join('\n')
+
 describe('task notifications', () => {
   test("reads whose it is, how it ended, and the first line of a JSON result's report", () => {
     expect(noticeOf(`<task-notification>\n${WF_DONE}\n</task-notification>`)).toEqual({
@@ -133,6 +150,20 @@ describe('task notifications', () => {
   test('finds no report in a JSON result cut before its report ends', () => {
     const cut = `${ids}\n<status>completed</status>\n<result>{"report":"**✓ 2 of 3 root causes survived** · 5 angles\\n- ✓ \`a.go:1\` nil addr\\`
     expect(noticeOf(cut)).toMatchObject({ toolUseId: WF.toolUseId, status: 'completed', report: null })
+  })
+
+  test('finds the report of a result cut to its first 8,000 characters, as a notification carries a long one', () => {
+    expect(noticeOf(`<task-notification>\n${CUT_SHAPED}\n</task-notification>`)).toEqual({
+      toolUseId: WF.toolUseId,
+      taskId: WF.taskId,
+      status: 'completed',
+      report: CUT_REPORT,
+    })
+    expect(CUT_SHAPED).toContain('"degraded":[],"hypotheses":[')
+    expect(CUT_SHAPED).toMatch(/\.\.\. \(truncated \d+ chars, full result in C:\/r\/out\.json\)<\/result>$/)
+    // The same result with its report last loses it to the cut: which is why the engines return it first.
+    const { report, degraded, ...rest } = LONG_RESULT
+    expect(noticeOf(`${ids}\n<status>completed</status>\n<result>${cutAt8000(JSON.stringify({ ...rest, report, degraded }))}</result>`).report).toBeNull()
   })
 
   test('strips control characters from a report and keeps 200 characters of it', () => {
@@ -447,6 +478,13 @@ describe('engine card', () => {
       'investigate · cluster · verify',
       WF_REPORT,
     ])
+  })
+
+  test("a result too long for its notification still puts its report's first line on the card", async ($, on) => {
+    const { clock } = await world($, on)
+    await launch($, clock, ['investigate:logs', 'cluster', 'verify:1:logic'])
+    await $.session.append(notification(CUT_SHAPED))
+    expect(linesOf(await drawnOn($, 'terminal')).at(-1)).toBe(CUT_REPORT)
   })
 
   test("the result takes its tone from the report's first glyph", async ($, on) => {

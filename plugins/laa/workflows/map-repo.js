@@ -115,4 +115,4 @@ const report = render([
   `**✓ Mapped ${scout.areas.length} areas** · ${scout.stack} · code intelligence: ${codeIntel}`,
   ...((synth && synth.recommendations) || []).map(r => `- \`${TAG[r.priority]}\` ${r.kind} \`${r.name}\`: ${r.purpose}`),
 ])
-return { stack: scout.stack, commands: scout.commands || {}, ...synth, report, degraded }
+return { report, degraded, stack: scout.stack, commands: scout.commands || {}, ...synth }

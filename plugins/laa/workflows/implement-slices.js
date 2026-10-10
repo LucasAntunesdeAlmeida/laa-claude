@@ -128,4 +128,4 @@ const report = render([
     ? `- ✓ \`${r.impl.branch}\` ${input.slices[i].title} · review: ${r.review ? r.review.verdict : 'none'}${r.fix && r.fix.status === 'done' ? ' · fixed' : ''}`
     : `- ✗ ${r.slice} ${(r.impl && ((r.impl.blockers && r.impl.blockers[0]) || r.impl.summary)) || 'no result'}`),
 ])
-return { base, results: summary, blocked, report, degraded }
+return { report, degraded, base, results: summary, blocked }

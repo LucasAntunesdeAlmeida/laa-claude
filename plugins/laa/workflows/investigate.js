@@ -109,10 +109,10 @@ const all = perAngle.filter(Boolean).flat()
 log(`${all.length} hypotheses from ${angles.length} angles`)
 if (!all.length) {
   return {
-    hypotheses: [],
-    note: 'No investigator produced a hypothesis. Gather more evidence (logs, repro) and rerun.',
     report: render(['**▲ No hypotheses** · gather logs or a reproduction and rerun']),
     degraded,
+    hypotheses: [],
+    note: 'No investigator produced a hypothesis. Gather more evidence (logs, repro) and rerun.',
   }
 }
 
@@ -152,4 +152,4 @@ const report = render([
     ? `- ✓ \`${c.location}\` ${c.rootCause} · ${c.confirmed} confirmed, ${c.refuted} refuted → ${c.howToConfirm}`
     : `- ✗ \`${c.location}\` ${c.rootCause} · refuted`),
 ])
-return { hypotheses: ranked, report, degraded }
+return { report, degraded, hypotheses: ranked }

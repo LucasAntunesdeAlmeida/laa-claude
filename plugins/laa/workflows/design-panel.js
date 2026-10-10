@@ -125,4 +125,4 @@ const report = render([
   ...totals.map((t, i) => `- ${i + 1}. ${t.lens} · ${t.score.toFixed(1)}`),
   `- Deep-dives: ${returned.length ? returned.join(', ') : 'none'}`,
 ])
-return { ...result, report, degraded }
+return { report, degraded, ...result }

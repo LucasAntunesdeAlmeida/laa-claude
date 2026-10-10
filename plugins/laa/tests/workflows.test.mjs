@@ -241,3 +241,73 @@ test('degraded lists each agentType once, even after several fallbacks', async (
   assert.deepEqual(result.degraded, ['laa:investigator'])
   assert.match(result.report, /\*\*▲ Degraded\*\* · laa:investigator unavailable/)
 })
+
+// Claude Code builds a workflow's task notification from the first 8,000 characters of the result's JSON and
+// cuts the rest. `report` is what the main session prints and what the engine card shows, so every result
+// holds it first, then `degraded`.
+
+const OPENERS = '\'"`{[('
+
+// The index of what closes the string or the bracket that opens at `at`.
+const endOf = (text, at) => {
+  const open = text[at]
+  let i = at + 1
+  if ('\'"`'.includes(open)) {
+    while (i < text.length && text[i] !== open) i += text[i] === '\\' ? 2 : 1
+    return i
+  }
+  while (i < text.length && !'}])'.includes(text[i])) i = (OPENERS.includes(text[i]) ? endOf(text, i) : i) + 1
+  return i
+}
+
+// The top-level keys of an object literal (from its `{` to its `}`), in the order written; a spread is `...name`.
+const keysOf = literal => {
+  const keys = []
+  let start = 1
+  for (let i = 1; i < literal.length; i += 1) {
+    if (OPENERS.includes(literal[i])) {
+      i = endOf(literal, i)
+    } else if (literal[i] === ',' || i === literal.length - 1) {
+      const key = /^\s*(\.\.\.\w+|\w+)/.exec(literal.slice(start, i))
+      if (key) keys.push(key[1])
+      start = i + 1
+    }
+  }
+  return keys
+}
+
+// Every object literal a workflow returns, as its keys.
+const returnsOf = text => [...text.matchAll(/\breturn \{/g)].map(m => {
+  const open = m.index + 'return '.length
+  return keysOf(text.slice(open, endOf(text, open) + 1))
+})
+
+test('reads the keys of a returned object in the order written', () => {
+  assert.deepEqual(keysOf("{ a: f(1, [2, 3]), ...rest, b: 'x, y', c }"), ['a', '...rest', 'b', 'c'])
+  assert.deepEqual(returnsOf("if (x) {\n  return {\n    one: 1,\n    two: g({ three: 3 }),\n  }\n}\nreturn { four, five }"), [['one', 'two'], ['four', 'five']])
+})
+
+test('every workflow returns its report first, then degraded, at every return', () => {
+  const SITES = { 'design-panel': 1, 'implement-slices': 1, investigate: 2, 'map-repo': 1, 'migrate-sites': 2, 'review-panel': 1 }
+  for (const name of NAMES) {
+    const sites = returnsOf(source(name)).filter(keys => keys.includes('report'))
+    assert.equal(sites.length, SITES[name], `${name}: returns that carry a report`)
+    for (const keys of sites) assert.deepEqual(keys.slice(0, 2), ['report', 'degraded'], `${name}: return { ${keys.join(', ')} }`)
+  }
+})
+
+test('a result cut at 8,000 characters still carries the whole report', async () => {
+  const many = Array.from({ length: 40 }, (_, i) => ({
+    severity: 'medium', file: `svc/handler${i}.go`, line: i + 1, title: `Handler ${i} skips the tenant check`, scenario: 'a long walk through the request '.repeat(10), fix: 'check the tenant',
+  }))
+  const { result } = await run('review-panel', { base: 'main' }, [
+    ['review:correctness', { findings: many }],
+    ['review:', { findings: [] }],
+    ['verify:', { verdict: 'confirmed', evidence: 'reproduced' }],
+  ])
+  const json = JSON.stringify(result)
+  assert.ok(json.length > 8000, `the result is ${json.length} characters`)
+  assert.equal(result.confirmed.length, 40)
+  assert.ok(json.slice(0, 8000).includes(`"report":${JSON.stringify(result.report)},"degraded":[]`))
+  assert.deepEqual(Object.keys(result).slice(0, 2), ['report', 'degraded'])
+})
