@@ -151,7 +151,6 @@ describe('findings pane · visuals: full', () => {
           { href: 'file:///C:/r/internal/billing/invoice.go', label: 'internal/billing/invoice.go:3' },
           { href: 'file:///C:/r/internal/billing/invoice.go', label: 'internal/billing/invoice.go:8' },
           { href: 'file:///C:/r/internal/billing/gone.go', label: 'internal/billing/gone.go:3' },
-          { href: 'file:///C:/other/secret.go', label: '../other/secret.go:1' },
           { href: 'file:///C:/r/internal/billing/huge.go', label: 'internal/billing/huge.go:1' },
         ])
       }
@@ -180,8 +179,12 @@ describe('findings pane · visuals: full', () => {
         return line?.children?.[1] as Exclude<Drawn, string> | undefined
       })
       if (surface === 'terminal') {
-        expect(drawn.map(d => [d?.type, d?.props?.label]), surface).toEqual(locations.map(l => ['Link', l]))
-        expect(drawn.every(d => String(d?.props?.href).startsWith('file:///C:/')), surface).toBe(true)
+        // Every file of the repo is linked; the one outside it is named in dim text, with no address.
+        const inRepo = drawn.filter((_, i) => i !== 3)
+        expect(inRepo.map(d => [d?.type, d?.props?.label]), surface).toEqual(locations.filter((_, i) => i !== 3).map(l => ['Link', l]))
+        expect(inRepo.every(d => String(d?.props?.href).startsWith('file:///C:/r/')), surface).toBe(true)
+        expect([drawn[3]?.type, drawn[3]?.props, drawn[3]?.children], surface).toEqual(['Text', { dimColor: true }, ['../other/secret.go:1']])
+        expect(show(tree), surface).not.toContain('secret.go"')
       } else {
         // No `file:` address reaches a surface that opens none: no Link, and no plain, undimmed text in its place.
         expect(all(tree, 'Link'), surface).toEqual([])
@@ -190,6 +193,36 @@ describe('findings pane · visuals: full', () => {
       }
       await ui.unmount()
     }
+  })
+
+  test("links no file the system's opener would run, none of git's, and none outside the repo", async ($, on) => {
+    const locations = [
+      'src/a.go:1',
+      'tools/setup.cmd:3',
+      'scripts/deploy.PS1:2',
+      'web/app.js:10',
+      'tools/run.sh. :4',
+      '.GIT/hooks/pre-commit:1',
+      '../other/notes.md:5',
+      'docs/guide.md:7',
+    ]
+    const review = locations.flatMap((l, i) => [`## LOW · ${l} · finding ${i}`, '- status: open']).join('\n')
+    await world($, on, { files: { [REVIEW_FILE]: `${review}\n` } })
+    await $.command.run(commandRun('laa-findings'))
+    const ui = await $.ui.mount({ ...PANE.findings, surface: 'terminal' })
+    const tree = (await ui.drawn()) as Drawn
+    expect(all(tree, 'Link').map(l => l.props)).toEqual([
+      { href: 'file:///C:/r/src/a.go', label: 'src/a.go:1' },
+      { href: 'file:///C:/r/docs/guide.md', label: 'docs/guide.md:7' },
+    ])
+    // The rest are named in dim text, as on the surfaces that open no link.
+    for (const i of [1, 2, 3, 4, 5, 6]) {
+      const line = keyed(tree, `finding${i}`)?.children?.[0] as Exclude<Drawn, string> | undefined
+      const location = line?.children?.[1] as Exclude<Drawn, string> | undefined
+      expect([location?.type, location?.props, location?.children], locations[i]).toEqual(['Text', { dimColor: true }, [locations[i]]])
+    }
+    expect(show(tree)).not.toMatch(/href="[^"]*(setup\.cmd|deploy|app\.js|run\.sh|GIT|other)/)
+    await ui.unmount()
   })
 
   test('draws the severity bar on the terminal and its legend everywhere', async ($, on) => {

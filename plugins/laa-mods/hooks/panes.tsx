@@ -6,7 +6,7 @@ import type { RenderElement } from 'claude-code'
 import type { Finding, Findings, Learning, Learnings } from '../types'
 import { barOf, C, isBuilt, rasterOf, sanitize, wordsOf } from './draw'
 import type { Els, Surface } from './draw'
-import { resolveFrom, slash } from './git'
+import { isInGit, isUnder, resolveFrom, slash } from './git'
 
 const MAX_HREF = 2048
 const MAX_LINE = 200
@@ -104,6 +104,26 @@ export const fileHref = (path: string): string | null => {
   const rest = p.slice(drive ? drive.length : 1).split('/').map(encodeURIComponent).join('/')
   const href = `file:///${drive}${rest}`
   return href.length <= MAX_HREF ? href : null
+}
+
+// File types that get no `file:` link. A terminal hands the address to the system's opener, and the opener
+// runs these (a script, a program, a shortcut) where it would show any other file: a click on a finding
+// must never run what the review, or the branch under review, put there.
+const RUNNABLE = new Set([
+  'cmd', 'bat', 'com', 'exe', 'lnk', 'hta', 'scr', 'msi', 'msc', 'cpl', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'ps1', 'py', 'pyw',
+  'sh', 'command', 'app', 'jar',
+])
+
+// The `file:` address a finding's location is linked to, or null where it is named in text instead: a file
+// outside the repo, one of git's own (`.git` in any case), one of a type the opener would run, or a path
+// `fileHref` gives no address for. Checked on the path's spelling: nothing is read to draw a link.
+export const linkOf = (repo: string, location: string): string | null => {
+  const path = resolveFrom(repo, locationOf(location).file)
+  if (!isUnder(path, repo) || isInGit(path, repo)) return null
+  // Windows opens `setup.cmd.` and `setup.cmd ` as `setup.cmd`.
+  const name = path.slice(path.lastIndexOf('/') + 1).replace(/[. ]+$/, '')
+  const type = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : ''
+  return RUNNABLE.has(type) ? null : fileHref(path)
 }
 
 // What the findings pane is drawn from.
@@ -204,7 +224,7 @@ const filterRow = (
 // severity (█ CRIT ▓ HIGH ▒ MED ░ LOW); on every surface its legend as Text; `<Select key="severity">` when
 // there are more than 3 findings and the surface draws a Select; then each finding the filter shows: its tag
 // (bold, `warning` for CRIT and HIGH, never `error`), its location (on the terminal a Link to the file; dim
-// Text, as 0.3.0 drew it, on the other surfaces, which open no `file:` address, and when `fileHref` gives
+// Text, as 0.3.0 drew it, on the other surfaces, which open no `file:` address, and when `linkOf` gives
 // none), the title, the code around it when `list.snippets` holds it, `→ fix`,
 // and the Buttons `fix{index}` and `dismiss{index}`; last, `fixHigh` (hotkey f) over every CRIT and HIGH
 // finding, filtered out or not. The keys are 0.3.0's. Returns null to draw the 0.3.0 pane, which
@@ -236,7 +256,7 @@ export const findingsPane = (els: Els, input: FindingsInput, acts: FindingsActs)
       {select}
       {shown.length === 0 && <Text dimColor>No open findings match this filter.</Text>}
       {shown.map(f => {
-        const href = input.surface === 'terminal' ? fileHref(resolveFrom(list.repo, locationOf(f.location).file)) : null
+        const href = input.surface === 'terminal' ? linkOf(list.repo, f.location) : null
         const snippet = list.snippets?.[f.index]
         // The review's own text is drawn without its control characters: one of them refuses the whole pane.
         const location = sanitize(f.location)
