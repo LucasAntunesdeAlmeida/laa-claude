@@ -12,7 +12,8 @@ import {
 } from './git'
 import type { Repo } from './git'
 import { gateText, runTag, spinnerText, turnTagFor } from './labels'
-import { findingsPane, learningsPane, locationOf, snippetOf } from './panes'
+import { findingsPane, learningsPane, locationOf, snippetsOf } from './panes'
+import type { Cut } from './panes'
 import { closingOf, isLaaClosing, reportCard } from './report'
 import type { Tone } from './report'
 import { stepperRow } from './stepper'
@@ -74,7 +75,7 @@ const pendingSpawns: Spawn[] = []
 let loadedReview: { repo: string; text: string } | null = null
 
 // The snippets already cut from a file, by its path and modification time, then by line.
-const snippetCache = new Map<string, Map<number, ReturnType<typeof snippetOf>>>()
+const snippetCache = new Map<string, Map<number, Cut | null>>()
 
 const denial = (repo: Repo, what: string) =>
   `laa: ${what} on the default branch \`${repo.branch}\` of ${repo.top} is blocked. ` +
@@ -313,7 +314,7 @@ async function setFilter($: Engine, pane: 'findings' | 'learnings', value: strin
 }
 
 // The code around each finding, by the finding's index: at most 30 findings, files under the repo and
-// outside .git, each read once whatever the number of findings in it, eight at a time. A file that is
+// outside .git, each read and split once whatever the number of findings in it, eight at a time. A file that is
 // missing, over 1 MB, or binary gives no snippet; nothing here throws.
 async function loadSnippets($: Engine, top: string, entries: readonly Finding[]) {
   const wanted = entries.slice(0, MAX_SNIPPETS).flatMap(f => {
@@ -323,7 +324,7 @@ async function loadSnippets($: Engine, top: string, entries: readonly Finding[])
     if (at.line === null || !isUnder(path, top) || isUnder(path, `${top}/.git`)) return []
     return [{ index: f.index, file: at.file, path, line: at.line }]
   })
-  const cut = new Map<string, Map<number, ReturnType<typeof snippetOf>>>()
+  const cut = new Map<string, Map<number, Cut | null>>()
   const paths = [...new Set(wanted.map(w => w.path))]
   for (let at = 0; at < paths.length; at += SNIPPET_BATCH) {
     await Promise.all(paths.slice(at, at + SNIPPET_BATCH).map(async path => {
@@ -335,7 +336,7 @@ async function loadSnippets($: Engine, top: string, entries: readonly Finding[])
         let known = snippetCache.get(key)
         if (!known || lines.some(line => !known?.has(line))) {
           const text = String(await $.fs.read(path))
-          known = new Map(lines.map(line => [line, snippetOf(text, line)]))
+          known = snippetsOf(text, lines)
           snippetCache.delete(key)
           snippetCache.set(key, known)
           for (const old of [...snippetCache.keys()].slice(0, Math.max(0, snippetCache.size - MAX_SNIPPET_CACHE))) snippetCache.delete(old)

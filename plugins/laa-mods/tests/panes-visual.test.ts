@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { decodeCells, DEFAULT_FG } from '../hooks/draw'
-import { snippetOf } from '../hooks/panes'
+import { snippetOf, snippetsOf } from '../hooks/panes'
 import { ALL_SURFACES, bash, commandRun, fakeRepo, PANE, ROOT, show, turnEnd } from './fake'
 import type { Drawn, Fake } from './fake'
 
@@ -450,6 +450,17 @@ describe('finding snippets · safe to draw', () => {
     expect(snippetOf('', 1)).toEqual({ source: '', startLine: 1 })
     expect(snippetOf('\ufeffpackage billing\nfunc total() {}', 1)).toEqual({ source: 'package billing\nfunc total() {}', startLine: 1 })
     expect(snippetOf('head\u0000tail', 1)).toBeNull()
+  })
+
+  test('several lines of one file are each cut as one line alone is', () => {
+    const text = Array.from({ length: 9 }, (_, i) => `line ${i + 1}`).join('\r\n')
+    const cuts = snippetsOf(text, [2, 8, 12, 2.5])
+    expect([...cuts.keys()]).toEqual([2, 8, 12, 2.5])
+    for (const line of [2, 8, 12, 2.5]) expect(cuts.get(line), `${line}`).toEqual(snippetOf(text, line))
+    expect(cuts.get(8)).toEqual({ source: 'line 6\nline 7\nline 8\nline 9', startLine: 6 })
+    // A binary file gives none, whichever line is asked for.
+    expect([...snippetsOf('head\u0000tail\nmore', [1, 2]).values()]).toEqual([null, null])
+    expect(snippetsOf(text, []).size).toBe(0)
   })
 })
 

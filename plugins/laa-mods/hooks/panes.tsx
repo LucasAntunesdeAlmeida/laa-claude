@@ -49,21 +49,35 @@ export const locationOf = (location: string): { file: string; line: number | nul
   return m ? { file: m[1] ?? '', line: Number(m[2]) } : { file: location.trim(), line: null }
 }
 
-// The lines of a file around `line` (two either side), safe to draw: no `\r`, any other control character
-// but a tab as `?`, each line cut at 200 characters. null when the file is binary (holds a NUL) or has no such line.
-// A byte order mark is no part of the first line, and the line break that ends the file starts no line after it.
-export const snippetOf = (text: string, line: number): { source: string; startLine: number } | null => {
-  if (text.includes('\u0000')) return null
-  const lines = text.replace(/^\ufeff/, '').split('\n')
-  if (lines.length > 1 && lines.at(-1) === '') lines.pop()
-  if (!Number.isInteger(line) || line < 1 || line > lines.length) return null
-  const startLine = Math.max(1, line - AROUND)
-  const source = lines
-    .slice(startLine - 1, line + AROUND)
-    .map(l => l.replace(/\r/g, '').replace(/[\u0001-\u0008\u000b-\u001f\u007f-\u009f]/g, '?').slice(0, MAX_LINE))
-    .join('\n')
-  return { source, startLine }
+// The lines of a file around one line of it, and the number of the first of them.
+export type Cut = { source: string; startLine: number }
+
+// The lines of a file around each of `wanted` (two either side), by the line asked for, safe to draw: no `\r`,
+// any other control character but a tab as `?`, each line cut at 200 characters. null for every line when the
+// file is binary (holds a NUL), and for a line the file does not have. A byte order mark is no part of the
+// first line, and the line break that ends the file starts no line after it. The file is checked and split
+// once, however many lines are asked for.
+export const snippetsOf = (text: string, wanted: readonly number[]): Map<number, Cut | null> => {
+  const lines = text.includes('\u0000') ? null : text.replace(/^\ufeff/, '').split('\n')
+  if (lines && lines.length > 1 && lines.at(-1) === '') lines.pop()
+  const cuts = new Map<number, Cut | null>()
+  for (const line of wanted) {
+    if (!lines || !Number.isInteger(line) || line < 1 || line > lines.length) {
+      cuts.set(line, null)
+      continue
+    }
+    const startLine = Math.max(1, line - AROUND)
+    const source = lines
+      .slice(startLine - 1, line + AROUND)
+      .map(l => l.replace(/\r/g, '').replace(/[\u0001-\u0008\u000b-\u001f\u007f-\u009f]/g, '?').slice(0, MAX_LINE))
+      .join('\n')
+    cuts.set(line, { source, startLine })
+  }
+  return cuts
 }
+
+// The lines around one `line` of a file, as `snippetsOf` cuts them.
+export const snippetOf = (text: string, line: number): Cut | null => snippetsOf(text, [line]).get(line) ?? null
 
 // The `file:` address of an absolute path, each segment encoded; null when it is not absolute or runs past
 // the 2,048 characters a Link's address may have (a longer one refuses the whole tree).
