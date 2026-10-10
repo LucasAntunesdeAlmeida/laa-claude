@@ -6,7 +6,7 @@ import type { RenderElement } from 'claude-code'
 import type { Journal, Run } from '../types'
 import { C, paletteOf, rasterOf, wordsOf } from './draw'
 import type { Els, Span } from './draw'
-import { tableFor } from './tables'
+import { STEPS, tableFor } from './tables'
 
 // What the stepper is drawn from, all of it read by register.tsx.
 export type StepperInput = {
@@ -36,20 +36,24 @@ export type Stepper = {
 }
 
 // The steps and their marks, or null when there is nothing to draw: no run and no paused journal, no table
-// fits (`tableFor`), or the step printed is not one of the table's. For a step `n` before the current step `c`:
+// fits (`tableFor`; a table other than the skill's own only for resume), or the step printed is not one of the
+// table's. For a step `n` before the current step `c`:
 // done when the run was joined mid-way (`seen` absent), when `n` is in `seen`, or when `n` is below the lowest
 // step seen; skipped otherwise. A paused journal keeps no history: every step before its own is done.
 export const stepperOf = ({ run, paused }: Pick<StepperInput, 'run' | 'paused'>): Stepper | null => {
   const source = run ?? paused
   if (!source) return null
   const table = tableFor(source.skill, source.step)
-  if (!table) return null
+  const isOwn = table === STEPS[source.skill]
+  // Only /laa:resume walks another skill's steps: any other skill printing them is off its contract.
+  if (!table || (!isOwn && source.skill !== 'resume')) return null
   const labels = table.steps.map(s => s.label)
   const step = source.step
   if (!step) return { steps: labels.map(label => ({ label, mark: 'todo' as const })), at: null, n: null, last: null }
   const at = step.n - table.first
   if (!Number.isInteger(at) || at < 0 || at >= labels.length) return null
-  const seen = run?.seen
+  // The steps a resume run saw are numbered in its own table, not in the one it now walks: no history.
+  const seen = isOwn ? run?.seen : undefined
   const lowest = seen ? Math.min(...seen) : 0
   const isDone = (n: number) => !seen || seen.includes(n) || n < lowest
   const here: Mark = source.gate ? 'gate' : run ? 'current' : 'paused'

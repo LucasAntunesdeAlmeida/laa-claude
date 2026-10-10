@@ -178,6 +178,25 @@ describe('step history', () => {
     expect(stepperOf({ run: { ...fixRun(3), step: { n: 8, last: 7, title: 'Investigate' } }, paused: null })).toBeNull()
   })
 
+  test("only resume is drawn from another skill's table", () => {
+    // A fix run printing feature's `7/8 · Review`, and a retro journal printing evolve's `1/5 · Gather`.
+    expect(tableFor('fix', { n: 7, last: 8, title: 'Review' })).toBe(STEPS.feature)
+    expect(stepperOf({ run: { ...fixRun(null), step: { n: 7, last: 8, title: 'Review' } }, paused: null })).toBeNull()
+    expect(tableFor('retro', { n: 1, last: 5, title: 'Gather' })).toBe(STEPS.evolve)
+    const paused = { skill: 'retro', branch: BRANCH, status: 'waiting', step: { n: 1, last: 5, title: 'Gather' }, gate: null }
+    expect(stepperOf({ run: null, paused })).toBeNull()
+    expect(stepperOf({ run: null, paused: { ...paused, skill: 'resume' } })).not.toBeNull()
+  })
+
+  test("a resume run's own steps are no history of the pipeline it picks up: every earlier step is done", () => {
+    const step = { n: 6, last: 7, title: 'Review' }
+    const resumed = stepperOf({ run: { skill: 'resume', step, gate: null, engine: null, seen: [1, 2, 3, 6] }, paused: null })
+    expect(marksOf(resumed)).toEqual(['done', 'done', 'done', 'done', 'done', 'done', 'current', 'todo'])
+    // While it walks its own steps, its history counts.
+    const own = stepperOf({ run: { skill: 'resume', step: { n: 3, last: 3, title: 'Continue' }, gate: null, engine: null, seen: [1, 3] }, paused: null })
+    expect(marksOf(own)).toEqual(['done', 'skipped', 'current'])
+  })
+
   test("a resume run printing another skill's steps is drawn from that skill's table, found by the title", () => {
     expect(tableFor('resume', { n: 5, last: 8, title: 'plan slices' })).toBe(STEPS.feature)
     // fix and migrate both end at 7: the title at the step tells them apart.
@@ -343,6 +362,17 @@ describe('stepper row', () => {
     expect(cellsOf(terminal.row2).text).toBe(fullRow('feature', 5, '●'))
   })
 
+  test('a resume run that printed its own steps first draws every earlier step of the pipeline done', async ($, on) => {
+    await world($, on)
+    await $.skill.prompt(skill('resume'))
+    await $.session.append(reply('**▸ 1/3 · Find the journal**', 'row-1'))
+    await $.session.append(reply('**▸ 2/3 · Rebuild the context**', 'row-2'))
+    await $.session.append(reply('**▸ 3/3 · Continue**', 'row-3'))
+    expect(cellsOf((await band($, 'terminal')).row2).text).toBe('✓ find ━ ✓ context ━ ● continue')
+    await $.session.append(reply('**▸ 6/7 · Review** · reviewer', 'row-4'))
+    await expectStepper($, runRow('resume', ' ▸ 6/7 Review'), fullRow('fix', 6, '●'), '● review', 'resumed fix 6/7')
+  })
+
   test("follows the band's width down the ladder, and stops under 12 columns", async ($, on) => {
     await world($, on)
     await $.skill.prompt(skill('fix'))
@@ -399,10 +429,19 @@ describe('no second row', () => {
     }
   })
 
-  test('for a paused journal of a skill with no step table', async ($, on) => {
-    await world($, on, { files: { [JOURNAL]: journal('retro', '1/3 · Gather', null) } })
+  test("for a paused journal of a skill with no step table, even when its step is one of another skill's", async ($, on) => {
+    await world($, on, { files: { [JOURNAL]: journal('retro', '1/5 · Gather', null) } })
     for (const surface of BAND_SURFACES) {
-      expect(show((await band($, surface)).tree), surface).toBe(pausedRow('retro', ' ▸ 1/3 Gather'))
+      expect(show((await band($, surface)).tree), surface).toBe(pausedRow('retro', ' ▸ 1/5 Gather'))
+    }
+  })
+
+  test("when a skill other than resume prints another skill's step", async ($, on) => {
+    await world($, on)
+    await $.skill.prompt(skill('fix'))
+    await $.session.append(reply('**▸ 7/8 · Review** · reviewer'))
+    for (const surface of BAND_SURFACES) {
+      expect(show((await band($, surface)).tree), surface).toBe(runRow('fix', ' ▸ 7/8 Review'))
     }
   })
 
