@@ -65,8 +65,16 @@ export const PHASES: Readonly<Record<string, readonly string[]>> = {
   'map-repo': ['Scout', 'Explore', 'Synthesize'],
 }
 
-// Roles whose name is not their phase's title.
-export const ROLE_ALIAS: Readonly<Record<string, string>> = { architect: 'Propose' }
+// Roles whose name is not their phase's title. The design panel labels its deep-dive specialists by what
+// each writes (`dataModel`, `api`, `threatModel`, `scaleRisks`, `infra`), whose lowercase prefixes these are.
+export const ROLE_ALIAS: Readonly<Record<string, string>> = {
+  architect: 'Propose',
+  data: 'Deep-dive',
+  api: 'Deep-dive',
+  threat: 'Deep-dive',
+  scale: 'Deep-dive',
+  infra: 'Deep-dive',
+}
 
 // The role of a workflow agent: the lowercase prefix of its label (`verify:2:logic` → `verify`); '' when it has none.
 export const roleOf = (label: string) => /^[a-z-]+/.exec(label)?.[0] ?? ''
