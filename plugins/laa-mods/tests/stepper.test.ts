@@ -278,10 +278,11 @@ describe('width ladder', () => {
 })
 
 describe('stepper row', () => {
-  test('every step of every skill, running and at a gate: a Raster on the terminal, Text on the desktop, row 1 as in 0.3.0', async ($, on) => {
-    await world($, on)
-    let row = 0
-    for (const [name, table] of Object.entries(STEPS)) {
+  // One test per skill: all nine in one test ran close to the kit's time limit.
+  for (const [name, table] of Object.entries(STEPS)) {
+    test(`every step of laa:${name}, running and at a gate: a Raster on the terminal, Text on the desktop, row 1 as in 0.3.0`, async ($, on) => {
+      await world($, on)
+      let row = 0
       for (const [i, def] of table.steps.entries()) {
         const n = table.first + i
         const what = `laa:${name} ${n}/${lastOf(table)}`
@@ -297,12 +298,10 @@ describe('stepper row', () => {
         const gate = await expectStepper($, gateRow(name, 'Go on?'), fullRow(name, n, '★'), `★ ${def.label}`, `${what} ★`)
         expect(gate.lit[0]?.props?.color, what).toBe('permission')
       }
-    }
-  })
+    })
 
-  test('every step of every skill, paused with and without a gate', async ($, on) => {
-    const seen = await world($, on)
-    for (const [name, table] of Object.entries(STEPS)) {
+    test(`every step of laa:${name}, paused with and without a gate`, async ($, on) => {
+      const seen = await world($, on)
       for (const [i, def] of table.steps.entries()) {
         const step = `${table.first + i}/${lastOf(table)}`
         for (const gate of [null, 'Go on?']) {
@@ -315,7 +314,11 @@ describe('stepper row', () => {
           expect(drawn.lit[0]?.props?.color).toBe(gate ? 'permission' : undefined)
         }
       }
-    }
+    })
+  }
+
+  test('the step tables cover the nine tracked skills, each drawn above', () => {
+    expect(Object.keys(STEPS).toSorted()).toEqual(['adopt', 'build', 'evolve', 'feature', 'fix', 'forge', 'migrate', 'resume', 'review'])
   })
 
   test('a run before its first step: every step to come', async ($, on) => {
