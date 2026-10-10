@@ -161,6 +161,19 @@ describe('closingOf', () => {
     expect(linked?.statusRaw).toBe('**✓ Opened the PR** · [orders#12](https://example.com/orders/pull/12) is ready')
   })
 
+  test('a status line of tens of thousands of brackets costs no time, and is drawn cut short', () => {
+    const under = '\n- **Cause** a retried webhook\n\n**Next**\n- say "retry"'
+    const started = Date.now()
+    const c = closingOf(`**✗ Tests still fail** · ${'['.repeat(40000)}${under}`)
+    expect(c?.statusRaw).toHaveLength('**✗ Tests still fail** · '.length + 40000)
+    expect(c?.status.startsWith('✗ Tests still fail · [[[')).toBe(true)
+    expect(c?.status).toHaveLength(2000)
+    // A block too long to be drawn as a card is not read at all.
+    expect(closingOf(`**✗ Tests still fail** · ${'['.repeat(120000)}${under}`)).toBeNull()
+    expect(closingOf(`${'x'.repeat(100001)}\n**✗ Tests still fail** · api${under}`)).toBeNull()
+    expect(Date.now() - started).toBeLessThan(500)
+  })
+
   test('keys a report by its status line and what stands under it, not by what stands above', () => {
     const a = closingOf('**✗ Tests still fail** · api\n- **Cause** a missing import\n\n**Next**\n- say "retry"')
     const b = closingOf('**✗ Tests still fail** · api\n- **Cause** a stale cache\n\n**Next**\n- say "retry"')

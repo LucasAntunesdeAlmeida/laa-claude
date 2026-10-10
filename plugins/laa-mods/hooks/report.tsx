@@ -42,15 +42,22 @@ const hashOf = (text: string) => {
   return h.toString(36)
 }
 
+// The most text one drawing may carry; a longer report is left to the engine.
+const MAX_DRAWN = 100000
+// The most of a status line that is turned into plain text and drawn.
+const MAX_STATUS = 2000
+
 // A line of markdown as the plain text a `<Text>` draws: inline code without its backticks, a link as its label.
-const plainOf = (line: string) => line.replace(/`([^`]+)`/g, '$1').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+// The link pattern takes time that grows with the square of a line of `[`, so it is given `MAX_STATUS` characters at most.
+const plainOf = (line: string) => line.slice(0, MAX_STATUS).replace(/`([^`]+)`/g, '$1').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
 
 // The block as a closing report, or null when it is not exactly one: the last `**✓ …**` or `**✗ …**` line,
 // a `**Next**` line somewhere under it, then a list (items, their indented continuations, blank lines) that
 // runs to the end of the block. A workflow's report (a status line with no Next) and a reply that goes on
 // after the list are not closing reports, nor is a block with CRLF line ends (the status line must end
-// where its line does).
+// where its line does). A block over 100,000 characters is never drawn as a card, so it is not read at all.
 export const closingOf = (text: string): Closing | null => {
+  if (text.length > MAX_DRAWN) return null
   const lines = text.split('\n')
   const s = lines.findLastIndex(l => STATUS.test(l))
   const m = STATUS.exec(lines[s] ?? '')
@@ -78,9 +85,6 @@ export const closingOf = (text: string): Closing | null => {
 // or (after a resume or a /clear, when nothing is recorded) its Next list names a laa command.
 export const isLaaClosing = (c: Closing, closings: readonly string[]) =>
   closings.includes(c.key) || /`\/laa[:-][a-z-]+[^`\n]*`/.test(c.next)
-
-// The most text one drawing may carry; a longer report is left to the engine.
-const MAX_DRAWN = 100000
 
 // A closing report as a card, on every surface: what stands above the status line as the reply's own
 // markdown, then a round frame holding the status line in bold and everything under it, the Next list included.

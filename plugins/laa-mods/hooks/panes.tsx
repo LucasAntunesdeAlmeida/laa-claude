@@ -42,11 +42,27 @@ const SCOPE_OPTIONS = [
   { value: 'generic', label: 'generic' },
 ] as const
 
+const isDigit = (code: number) => code >= 48 && code <= 57
+
 // A finding's location as a file and a line: `src/a.go:14` (also `:14-20` and `:14:3`, which name line 14).
 // `line` is null when the location names none.
+// Read from the end, one pass: the location is the review's own text, as long and as odd as it likes, and
+// this runs on every draw. Walking back over the `:14`, `-20`, `,3` groups that end it, the file stops at
+// the first `:` of that run (never at the location's own first character).
 export const locationOf = (location: string): { file: string; line: number | null } => {
-  const m = /^(.+?):(\d+)(?:[-:,]\d+)*$/.exec(location.trim())
-  return m ? { file: m[1] ?? '', line: Number(m[2]) } : { file: location.trim(), line: null }
+  const text = location.trim()
+  let colon = -1
+  let end = text.length
+  while (end > 0) {
+    let start = end
+    while (start > 0 && isDigit(text.charCodeAt(start - 1))) start -= 1
+    const sep = text.charAt(start - 1)
+    if (start === end || start < 2 || (sep !== ':' && sep !== '-' && sep !== ',')) break
+    if (sep === ':') colon = start - 1
+    end = start - 1
+  }
+  if (colon < 0) return { file: text, line: null }
+  return { file: text.slice(0, colon), line: Number(/^\d+/.exec(text.slice(colon + 1))?.[0]) }
 }
 
 // The lines of a file around one line of it, and the number of the first of them.

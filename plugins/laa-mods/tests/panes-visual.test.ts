@@ -4,7 +4,7 @@ import type { On } from 'claude-code'
 
 import { decodeCells, DEFAULT_FG } from '../hooks/draw'
 import { isInGit } from '../hooks/git'
-import { snippetOf, snippetsOf } from '../hooks/panes'
+import { locationOf, snippetOf, snippetsOf } from '../hooks/panes'
 import { ALL_SURFACES, bash, commandRun, fakeRepo, PANE, ROOT, show, turnEnd } from './fake'
 import type { Drawn, Fake } from './fake'
 
@@ -573,6 +573,34 @@ describe('finding snippets · safe to draw', () => {
       expect(all(keyed(tree, 'finding1') ?? '', 'Code'), surface).toHaveLength(1)
       await ui.unmount()
     }
+  })
+
+  test("a location's line is read from its end, and a long hostile one costs no time", () => {
+    const want: [string, string, number | null][] = [
+      ['src/a.go:14', 'src/a.go', 14],
+      [' src/a.go:14-20 ', 'src/a.go', 14],
+      ['src/a.go:14:3', 'src/a.go', 14],
+      ['src/a.go:14,20:2', 'src/a.go', 14],
+      ['C:/r/a.go:7', 'C:/r/a.go', 7],
+      ['a:1:b.go:3', 'a:1:b.go', 3],
+      ['1:1:1', '1', 1],
+      ['x:1-2:3', 'x', 1],
+      ['x:01', 'x', 1],
+      ['docs/setup.md', 'docs/setup.md', null],
+      [':12', ':12', null],
+      ['a.go:', 'a.go:', null],
+      ['a.go:1:', 'a.go:1:', null],
+      ['a.go:1-', 'a.go:1-', null],
+      ['', '', null],
+    ]
+    for (const [location, file, line] of want) expect(locationOf(location), location).toEqual({ file, line })
+
+    // 80,000 characters that are a line suffix all the way but for the last one.
+    const hostile = `${'1:'.repeat(40000)}1x`
+    const started = Date.now()
+    expect(locationOf(hostile)).toEqual({ file: hostile, line: null })
+    expect(locationOf(hostile.slice(0, -1))).toEqual({ file: '1', line: 1 })
+    expect(Date.now() - started).toBeLessThan(500)
   })
 
   test('the line break that ends a file starts no line, and a byte order mark is left out', () => {
