@@ -90,6 +90,40 @@ describe('engine cards', () => {
     expect(state.engines).toMatchObject({ [WF.toolUseId]: { roles: { verify: 64 }, count: 64 } })
   })
 
+  test('a short burst is still counted when the first wait it asked for was refused', async ($, on) => {
+    // A clock of this test's own, in place of `world`'s: the first wait asked of it is refused, as another
+    // plugin's hook might; each later one comes due when the test says so.
+    fakeRepo(on, { branch: 'fix/invoice-500', mapAge: 1, results: { Workflow: WF_LAUNCHED } })
+    const due: (() => void)[] = []
+    let asked = 0
+    on('clock.after', () => {
+      asked += 1
+      if (asked === 1) throw new Error('refused')
+      return new Promise<{ value: undefined }>(resolve => due.push(() => resolve({ value: undefined })))
+    })
+    let cards: unknown
+    on('state.set', ($, e, next) => {
+      if (e.key === 'engines') cards = e.value
+      return next(e)
+    })
+    on('agent.spawn', () => ({ model: 'claude-test', agentId: 'agent_test1' }))
+    await $.tool.call(wfCall())
+    for (let i = 0; i < 10; i += 1) await $.agent.spawn(spawnWf(`verify:${i + 1}:logic`, { agentIndex: i + 1 }))
+    expect(asked).toBeGreaterThan(1)
+    for (const fire of due) fire()
+    // The count runs on its own once the wait is over: other calls pass until it has written.
+    for (let i = 0; i < 20 && !(cards as Record<string, { count: number }>)[WF.toolUseId]?.count; i += 1) await $.tool.call(bash('echo waiting'))
+    expect(cards).toMatchObject({ [WF.toolUseId]: { roles: { verify: 10 }, count: 10 } })
+  })
+
+  test('65 spawns before the first count are all counted', async ($, on) => {
+    const { clock, state } = await world($, on)
+    await $.tool.call(wfCall())
+    for (let i = 0; i < 65; i += 1) await $.agent.spawn(spawnWf(`verify:${i + 1}:logic`, { agentIndex: i + 1 }))
+    await clock.advance(200)
+    expect(state.engines).toMatchObject({ [WF.toolUseId]: { roles: { verify: 65 }, count: 65 } })
+  })
+
   test('leaves other workflows, plain agents, and spawns with no engine running alone', async ($, on) => {
     const { clock, writes, state } = await world($, on)
     await $.tool.call(wfCall('nightly-report'))

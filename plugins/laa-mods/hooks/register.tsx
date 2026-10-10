@@ -55,11 +55,12 @@ const PRE = 'laa · '
 // How many of each the session keeps; the oldest go first.
 const MAX_CLOSINGS = 50
 const MAX_TURN_TAGS = 50
-// Spawns are counted this long after the first of a burst, in one write. A burst that outgrows SPAWN_REARM
-// arms the count again, so a timer that never fired can't leave spawns waiting for good; at MAX_PENDING
-// the ones still waiting are given up.
+// Spawns are counted this long after the first of a burst, in one write. The count is armed again at every
+// SPAWN_REARM-th spawn still waiting, so one timer that never fired (another plugin's hook may refuse it)
+// delays the count until the next is armed; a burst that ends before then waits for the next spawn. At
+// MAX_PENDING the ones still waiting are given up.
 const SPAWN_FLUSH_MS = 200
-const SPAWN_REARM = 64
+const SPAWN_REARM = 8
 const MAX_PENDING = 1024
 // Snippets: how many findings get one, the largest file read for one, the longest file name a location may
 // give for one, and how many files' worth are remembered.
