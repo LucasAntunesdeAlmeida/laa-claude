@@ -81,9 +81,33 @@ async function launch($: Engine, clock: { advance: (ms: number) => Promise<unkno
 
 const ids = `<task-id>${WF.taskId}</task-id>\n<tool-use-id>${WF.toolUseId}</tool-use-id>`
 
+// A workflow's notification with every block a real session's carries, in their order (the shape is from a
+// real run; every id, path, and number is invented): the output file, the diagnostics, and the usage stand
+// around the status and the result, and the summary names the workflow by its description, not its name.
+const LIVE_SHAPED = [
+  `<task-id>${WF.taskId}</task-id>`,
+  `<tool-use-id>${WF.toolUseId}</tool-use-id>`,
+  '<output-file>C:\\Users\\me\\tmp\\tasks\\task_test1.output</output-file>',
+  '<status>completed</status>',
+  '<summary>Dynamic workflow "Engine · root-cause fan-out" completed</summary>',
+  `<result>${JSON.stringify({ hypotheses: [], report: '**✓ 2 of 3 root causes survived verification** · 5 angles\n- ✓ `a.go:1` nil address' })}</result>`,
+  '<diagnostics>Per-agent results: C:\\Users\\me\\runs\\wf_test1/journal.jsonl — one {"type":"result",...} line per completed agent.',
+  "To re-run: Workflow({scriptPath: 'C:\\Users\\me\\scripts\\investigate-wf_test1.js', resumeFromRunId: 'wf_test1', args: {\"bug\":\"x\"}})</diagnostics>",
+  '<usage><agent_count>15</agent_count><agents_done>15</agents_done><agents_error>0</agents_error><duration_ms>90000</duration_ms></usage>',
+].join('\n')
+
 describe('task notifications', () => {
   test("reads whose it is, how it ended, and the first line of a JSON result's report", () => {
     expect(noticeOf(`<task-notification>\n${WF_DONE}\n</task-notification>`)).toEqual({
+      toolUseId: WF.toolUseId,
+      taskId: WF.taskId,
+      status: 'completed',
+      report: WF_REPORT,
+    })
+  })
+
+  test('reads a notification with every block a real session sends around the status and the result', () => {
+    expect(noticeOf(`<task-notification>\n${LIVE_SHAPED}\n</task-notification>`)).toEqual({
       toolUseId: WF.toolUseId,
       taskId: WF.taskId,
       status: 'completed',
@@ -399,6 +423,18 @@ describe('engine card', () => {
       expect(show(tree), surface).toContain('<Text dimColor>"Cluster"</Text>')
       expect(show(tree), surface).toContain('<Text color="success" wrap="truncate-end">"✓ completed"</Text>')
     }
+  })
+
+  test('a notification that starts its own turn, as a real session delivers one, settles the card', async ($, on) => {
+    const { clock } = await world($, on)
+    await launch($, clock, ['investigate:logs', 'cluster', 'verify:1:logic'])
+    await $.session.append({ ...notification(LIVE_SHAPED), door: 'prompt', origin: { kind: 'task-notification' } as never })
+    expect(linesOf(await drawnOn($, 'terminal'))).toEqual([
+      'investigate · laa engine · 3 agents',
+      '✓ Investigate ━ ✓ Cluster ━ ✓ Verify',
+      'investigate · cluster · verify',
+      WF_REPORT,
+    ])
   })
 
   test("the result takes its tone from the report's first glyph", async ($, on) => {
