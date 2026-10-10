@@ -4,12 +4,41 @@
 import type { RenderElement } from 'claude-code'
 
 import type { Finding, Findings, Learning, Learnings } from '../types'
+import { barOf, C, rasterOf, wordsOf } from './draw'
 import type { Els } from './draw'
-import { slash } from './git'
+import { resolveFrom, slash } from './git'
 
 const MAX_HREF = 2048
 const MAX_LINE = 200
 const AROUND = 2
+// The widest a pane's bar is drawn, and how many entries a pane holds before it offers a filter.
+const MAX_BAR = 40
+const MIN_TO_FILTER = 3
+
+// The shade each severity and each scope is drawn in, darkest first.
+const SEVERITIES = [
+  { name: 'CRIT', glyph: '█' },
+  { name: 'HIGH', glyph: '▓' },
+  { name: 'MED', glyph: '▒' },
+  { name: 'LOW', glyph: '░' },
+] as const
+const SCOPES = [
+  { name: 'local', glyph: '▓' },
+  { name: 'generic', glyph: '░' },
+] as const
+
+// What each pane's Select offers, by the value its filter is kept under.
+const SEVERITY_OPTIONS = [
+  { value: 'all', label: 'all' },
+  { value: 'high', label: 'CRIT+HIGH' },
+  { value: 'med', label: 'MED' },
+  { value: 'low', label: 'LOW' },
+] as const
+const SCOPE_OPTIONS = [
+  { value: 'all', label: 'all' },
+  { value: 'local', label: 'local' },
+  { value: 'generic', label: 'generic' },
+] as const
 
 // A finding's location as a file and a line: `src/a.go:14` (also `:14-20` and `:14:3`, which name line 14).
 // `line` is null when the location names none.
@@ -74,19 +103,162 @@ export type LearningsActs = {
   onFilter: (value: string) => unknown
 }
 
-// STUB (slice D draws it). The findings pane, top to bottom: the repo (dim); on the terminal a Raster bar by
-// severity (█ CRIT ▓ HIGH ▒ MED ░ LOW, `barOf` then `rasterOf`, at most 40 cells and `columns - 2`); on every
-// surface the legend as Text; `<Select key="severity">` (all, CRIT+HIGH, MED, LOW → `onFilter`) when there are
-// more than 3 findings and `'Select' in els`; then each finding the filter shows: its tag (bold, `warning` for
-// CRIT and HIGH, never `error`), a Link to the file (`fileHref`; dim Text when it is null) labelled with the
-// location, the title, `<Code>` from `list.snippets[f.index]` when there is one, `→ fix`, and the Buttons
-// `fix{index}` and `dismiss{index}`; last, `fixHigh` (hotkey f) over every CRIT and HIGH finding, filtered out or not.
-// The keys `finding{index}`, `fix{index}`, `dismiss{index}`, and `fixHigh` are 0.3.0's and stay.
-// Returns null to draw the 0.3.0 pane, which register.tsx keeps verbatim.
-export const findingsPane = (_els: Els, _input: FindingsInput, _acts: FindingsActs): RenderElement | null => null
+// One stretch of a bar: its shade, what it counts, and how many.
+type Part = { glyph: string; name: string; count: number }
 
-// STUB (slice D draws it). The learnings pane: the repo (dim); on the terminal a Raster bar by scope (▓ local,
-// ░ generic) and on every surface its legend; `<Select key="scope">` (all, local, generic → `onFilter`) under the
-// same conditions as the findings pane's; then each learning the filter shows, as 0.3.0 draws it, with its
-// `reject{index}` Button; last, `evolve` (hotkey e). Returns null to draw the 0.3.0 pane.
-export const learningsPane = (_els: Els, _input: LearningsInput, _acts: LearningsActs): RenderElement | null => null
+const isHigh = (f: Finding) => f.tag === 'CRIT' || f.tag === 'HIGH'
+
+// Whether a finding is shown under a severity filter; `all` shows every one.
+const isShownFinding = (f: Finding, filter: string) =>
+  filter === 'high' ? isHigh(f) : filter === 'med' ? f.tag === 'MED' : filter === 'low' ? f.tag === 'LOW' : true
+
+// A filter as one of the values its Select offers; anything else counts as `all`.
+const filterOf = (options: readonly { value: string }[], filter: string) =>
+  options.some(o => o.value === filter) ? filter : 'all'
+
+// How many entries each shade of a bar counts, by the name `nameOf` reads off an entry.
+const partsOf = <T,>(shades: readonly { name: string; glyph: string }[], entries: readonly T[], nameOf: (entry: T) => string): Part[] =>
+  shades.map(s => ({ glyph: s.glyph, name: s.name, count: entries.filter(entry => nameOf(entry) === s.name).length }))
+
+// A bar's legend, every part named with its count: `█ CRIT 0 · ▓ HIGH 1 · ▒ MED 1 · ░ LOW 0`.
+const legendOf = (parts: readonly Part[]) => parts.map(p => `${p.glyph} ${p.name} ${p.count}`).join(' · ')
+
+// Whether a surface's table built the element asked of it. Every surface's table holds every constructor;
+// one the surface does not draw answers an empty Box in its place, so `'Select' in els` alone says nothing.
+const isBuilt = (el: RenderElement, type: string) => (el as { type?: unknown } | null)?.type === type
+
+// The parts as one Raster row in the terminal's own color, at most 40 cells and two short of the pane's
+// width. null where the surface draws no Raster, nothing counts, there is no room, or `rasterOf` refuses
+// the cells: the legend under it says the same in Text.
+const barRow = (els: Els, key: string, parts: readonly Part[], columns: number): RenderElement | null => {
+  if (!('Raster' in els) || !Number.isFinite(columns)) return null
+  const bar = barOf(parts, Math.min(Math.floor(columns) - 2, MAX_BAR))
+  const raster = bar ? rasterOf([...bar].length, 1, wordsOf([{ text: bar }])) : null
+  if (!raster) return null
+  const { Raster } = els
+  const row = <Raster key={key} columns={raster.columns} rows={raster.rows} cells={raster.cells} />
+  return isBuilt(row, 'Raster') ? row : null
+}
+
+// A pane's filter as a Select, or null where there is none to offer: three entries or fewer, or a surface
+// that draws no Select (mobile). Where it is null the pane shows every entry, whatever the filter was left at.
+const filterRow = (
+  els: Els,
+  key: string,
+  options: readonly { value: string; label: string }[],
+  value: string,
+  count: number,
+  onFilter: (value: string) => unknown,
+): RenderElement | null => {
+  if (count <= MIN_TO_FILTER || !('Select' in els)) return null
+  const { Select } = els
+  const row = <Select key={key} label="Show" options={options} value={value} onSelect={picked => void onFilter(picked)} />
+  return isBuilt(row, 'Select') ? row : null
+}
+
+// The findings pane under `visuals: full`, top to bottom: the repo (dim); on the terminal a Raster bar by
+// severity (█ CRIT ▓ HIGH ▒ MED ░ LOW); on every surface its legend as Text; `<Select key="severity">` when
+// there are more than 3 findings and the surface has a Select; then each finding the filter shows: its tag
+// (bold, `warning` for CRIT and HIGH, never `error`), a Link to the file labelled with the location (dim
+// Text when `fileHref` gives none), the title, the code around it when `list.snippets` holds it, `→ fix`,
+// and the Buttons `fix{index}` and `dismiss{index}`; last, `fixHigh` (hotkey f) over every CRIT and HIGH
+// finding, filtered out or not. The keys are 0.3.0's. Returns null to draw the 0.3.0 pane, which
+// register.tsx keeps verbatim.
+export const findingsPane = (els: Els, input: FindingsInput, acts: FindingsActs): RenderElement | null => {
+  const { list } = input
+  if (!list || typeof list.repo !== 'string' || !Array.isArray(list.entries)) return null
+  const { Box, Button, Code, Link, Text } = els
+  if (!Box || !Button || !Code || !Link || !Text) return null
+  const entries = list.entries
+  if (entries.length === 0) {
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>{list.repo}</Text>
+        <Text>No open findings. Nothing to fix.</Text>
+      </Box>
+    )
+  }
+  const parts = partsOf(SEVERITIES, entries, f => f.tag)
+  const filter = filterOf(SEVERITY_OPTIONS, input.filter)
+  const select = filterRow(els, 'severity', SEVERITY_OPTIONS, filter, entries.length, acts.onFilter)
+  const shown = select ? entries.filter(f => isShownFinding(f, filter)) : entries
+  const high = entries.filter(isHigh)
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>{list.repo}</Text>
+      {barRow(els, 'severity-bar', parts, input.columns)}
+      <Text dimColor>{legendOf(parts)}</Text>
+      {select}
+      {shown.length === 0 && <Text dimColor>No open findings match this filter.</Text>}
+      {shown.map(f => {
+        const href = fileHref(resolveFrom(list.repo, locationOf(f.location).file))
+        const snippet = list.snippets?.[f.index]
+        return (
+          <Box key={`finding${f.index}`} flexDirection="column" marginTop={1}>
+            <Box>
+              <Text bold color={isHigh(f) ? C.warning : undefined}>{`${f.tag.padEnd(4)}  `}</Text>
+              {href ? <Link href={href} label={f.location} /> : <Text dimColor>{f.location}</Text>}
+            </Box>
+            <Text>{f.title}</Text>
+            {snippet && <Code source={snippet.source} startLine={snippet.startLine} path={snippet.path} wrap="truncate-end" />}
+            {f.fix && <Text color={C.action}>→ {f.fix}</Text>}
+            <Box>
+              <Button key={`fix${f.index}`} label="Fix" onPress={() => acts.onFix([f])} />
+              <Button key={`dismiss${f.index}`} label="Dismiss" onPress={() => acts.onDismiss(f)} />
+            </Box>
+          </Box>
+        )
+      })}
+      {high.length > 0 && (
+        <Box marginTop={1}>
+          <Button key="fixHigh" label={`Fix all CRIT and HIGH (${high.length})`} variant="primary" hotkey="f" onPress={() => acts.onFix(high)} />
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+// The learnings pane under `visuals: full`: the repo (dim); on the terminal a Raster bar by scope (▓ local,
+// ░ generic) and on every surface its legend; `<Select key="scope">` under the same conditions as the
+// findings pane's; then each learning the filter shows, as 0.3.0 draws it, with its `reject{index}` Button;
+// last, `evolve` (hotkey e). Returns null to draw the 0.3.0 pane.
+export const learningsPane = (els: Els, input: LearningsInput, acts: LearningsActs): RenderElement | null => {
+  const { list } = input
+  if (!list || typeof list.repo !== 'string' || !Array.isArray(list.entries)) return null
+  const { Box, Button, Text } = els
+  if (!Box || !Button || !Text) return null
+  const entries = list.entries
+  if (entries.length === 0) {
+    return (
+      <Box flexDirection="column">
+        <Text dimColor>{list.repo}</Text>
+        <Text>No open learnings. Nothing to evolve.</Text>
+      </Box>
+    )
+  }
+  const parts = partsOf(SCOPES, entries, entry => entry.scope)
+  const filter = filterOf(SCOPE_OPTIONS, input.filter)
+  const select = filterRow(els, 'scope', SCOPE_OPTIONS, filter, entries.length, acts.onFilter)
+  const shown = select && filter !== 'all' ? entries.filter(entry => entry.scope === filter) : entries
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>{list.repo}</Text>
+      {barRow(els, 'scope-bar', parts, input.columns)}
+      <Text dimColor>{legendOf(parts)}</Text>
+      {select}
+      {shown.length === 0 && <Text dimColor>No open learnings match this filter.</Text>}
+      {shown.map(entry => (
+        <Box key={`entry${entry.index}`} flexDirection="column" marginTop={1}>
+          <Text bold>{entry.title}</Text>
+          <Text dimColor>{entry.scope} · {entry.kind} · {entry.target}</Text>
+          <Text>{entry.signal}</Text>
+          <Text color={C.action}>→ {entry.proposal}</Text>
+          <Button key={`reject${entry.index}`} label="Reject" onPress={() => acts.onReject(entry)} />
+        </Box>
+      ))}
+      <Box marginTop={1}>
+        <Button key="evolve" label="Evolve with /laa:evolve" variant="primary" hotkey="e" onPress={() => acts.onEvolve()} />
+      </Box>
+    </Box>
+  )
+}
