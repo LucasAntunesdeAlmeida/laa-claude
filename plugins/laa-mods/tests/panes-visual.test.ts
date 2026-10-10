@@ -392,11 +392,12 @@ describe('findings pane · visuals: full', () => {
     await $.command.run(commandRun('laa-findings'))
     const ui = await $.ui.mount({ ...PANE.findings, surface: 'terminal' })
     const source = () => seen.reads.filter(p => p.startsWith('internal/')).length
-    const before = { stats: seen.stats.length, reads: source(), findings: writes.findings }
+    const before = { reads: source(), findings: writes.findings }
     expect(before).toMatchObject({ reads: 1, findings: 1 })
     await $.turn.complete(turnEnd('Looked at the review.'))
     await $.turn.complete(turnEnd('Looked at the review.'))
-    expect({ stats: seen.stats.length, reads: source(), findings: writes.findings }).toEqual(before)
+    // Each turn's end asks the cited files their age (an edit would show there) and reads none.
+    expect({ reads: source(), findings: writes.findings }).toEqual(before)
     expect(all((await ui.drawn()) as Drawn, 'Code')).toHaveLength(2)
     await ui.unmount()
   })

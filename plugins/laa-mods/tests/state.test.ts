@@ -16,15 +16,17 @@ const MINIMAL = { options: { visuals: 'minimal' } }
 
 // A repo on a task branch with the engine's side of every event these tests raise, and a clock to move.
 // Returns the fake's record, the clock, and the plugin's state as it wrote it: each value as last written
-// (absent while never written), and how many times it was.
+// (absent while never written), how many times it was, and every value in the order written.
 async function world($: Engine, on: On, f: Fake = {}) {
   const seen = fakeRepo(on, { branch: 'fix/invoice-500', mapAge: 1, results: { Workflow: WF_LAUNCHED }, ...f })
   const clock = mock.clock(on)
   const state: Record<string, unknown> = {}
   const writes: Record<string, number> = {}
+  const written: Record<string, unknown[]> = {}
   on('state.set', ($, e, next) => {
     state[e.key] = e.value
     writes[e.key] = (writes[e.key] ?? 0) + 1
+    written[e.key] = [...(written[e.key] ?? []), e.value]
     return next(e)
   })
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -33,7 +35,7 @@ async function world($: Engine, on: On, f: Fake = {}) {
   on('session.end', ($, e) => ({ sessionId: e.sessionId }))
   on('agent.spawn', () => ({ model: 'claude-test', agentId: 'agent_test1' }))
   await $.tool.call(bash('git status'))
-  return { seen, clock, state, writes }
+  return { seen, clock, state, writes, written }
 }
 
 const CLOSING = '**✓ Fixed** · nil address\n\n**Next**\n- `/laa:retro`: capture what we learned'
@@ -228,6 +230,23 @@ const REVIEW = [
 ].join('\n')
 const FILES = { '.claude/laa/local/last-review.md': REVIEW, 'src/export/csv.go': SOURCE, 'src/export/huge.go': 'x', 'docs/setup.md': 'text' }
 
+// The review with a seventh finding, in a file of its own.
+const REVIEW_7 = `${REVIEW}## MED · src/export/job.go:2 · no backoff\n- status: open\n`
+
+// The world with that file in it, whose source files answer a read a second late.
+async function slowWorld($: Engine, on: On) {
+  const late: { sleep?: (ms: number) => Promise<void> } = {}
+  const made = await world($, on, {
+    files: { ...FILES, 'src/export/job.go': 'retry()\nbackoff()' },
+    sizes: { 'src/export/huge.go': 2 * 1024 * 1024 },
+    beforeRead: async path => {
+      if (path.startsWith('src/')) await late.sleep?.(1000)
+    },
+  })
+  late.sleep = ms => made.clock.sleep(ms)
+  return made
+}
+
 describe('finding snippets', () => {
   test('loads the code around each finding it can read, each file once', async ($, on) => {
     const { seen, state } = await world($, on, { files: FILES, sizes: { 'src/export/huge.go': 2 * 1024 * 1024 } })
@@ -242,22 +261,81 @@ describe('finding snippets', () => {
     expect(seen.reads.some(p => p.includes('secret'))).toBe(false)
   })
 
-  test('reads and writes nothing again while the review has not changed', async ($, on) => {
-    const { seen, writes, state } = await world($, on, { files: FILES, sizes: { 'src/export/huge.go': 2 * 1024 * 1024 } })
+  test('reads no file and writes nothing again while neither the review nor the files it cites changed', async ($, on) => {
+    const { seen, clock, writes, state } = await world($, on, { files: FILES, sizes: { 'src/export/huge.go': 2 * 1024 * 1024 } })
     await $.command.run(commandRun('laa-findings'))
-    const before = { stats: seen.stats.length, reads: seen.reads.filter(p => p.startsWith('src/')).length, findings: writes.findings }
+    const before = { reads: seen.reads.filter(p => p.startsWith('src/')).length, findings: writes.findings }
     await $.turn.complete(turnEnd('Looked at the review.'))
     await $.turn.complete(turnEnd('Still looking.'))
-    expect({ stats: seen.stats.length, reads: seen.reads.filter(p => p.startsWith('src/')).length, findings: writes.findings }).toEqual(before)
+    await clock.settle()
+    // Each cited file is asked its age again, which is how an edit would show; none is read.
+    expect({ reads: seen.reads.filter(p => p.startsWith('src/')).length, findings: writes.findings }).toEqual(before)
 
     // A changed review is loaded again; the file it points into is not read again while it has not changed.
     seen.setFile('.claude/laa/local/last-review.md', REVIEW.replace('- status: open', '- status: fixed (abc1234)'))
     await $.turn.complete(turnEnd('Fixed one.'))
+    await clock.settle()
     const shown = state.findings as { entries: unknown[]; snippets: Record<number, unknown> }
     expect(shown.entries).toHaveLength(5)
     expect(Object.keys(shown.snippets)).toEqual(['1'])
     expect(writes.findings).toBe((before.findings ?? 0) + 1)
     expect(seen.reads.filter(p => p.startsWith('src/'))).toHaveLength(before.reads)
+  })
+
+  test('cuts the code again once a cited file is edited, though the review has not changed', async ($, on) => {
+    const { seen, clock, writes, state } = await world($, on, { files: FILES, sizes: { 'src/export/huge.go': 2 * 1024 * 1024 } })
+    await $.command.run(commandRun('laa-findings'))
+    const before = { reads: seen.reads.filter(p => p.startsWith('src/')).length, findings: writes.findings ?? 0 }
+    const snippets = () => (state.findings as { snippets: Record<number, { source: string }> }).snippets
+
+    seen.setFile('src/export/csv.go', SOURCE.replace('line 2', 'if addr == nil {'))
+    await $.turn.complete(turnEnd('Guarded the address.'))
+    await clock.settle()
+    expect(snippets()[0]?.source).toBe('line 1\nif addr == nil {\nline 3\nline 4')
+    expect(snippets()[1]?.source).toBe('line 6\nline 7\nline 8\nline 9')
+    expect(seen.reads.filter(p => p.startsWith('src/'))).toHaveLength(before.reads + 1)
+    expect(writes.findings).toBe(before.findings + 1)
+
+    // Opening the pane again finds an edit too, and has the code in hand when the command answers.
+    seen.setFile('src/export/csv.go', SOURCE.replace('line 8', 'return rows'))
+    await $.command.run(commandRun('laa-findings'))
+    expect(snippets()[0]?.source).toBe('line 1\nline 2\nline 3\nline 4')
+    expect(snippets()[1]?.source).toBe('line 6\nline 7\nreturn rows\nline 9')
+  })
+
+  test("a turn's end does not wait for the cited files: the entries show at once, the code when it is read", async ($, on) => {
+    const { seen, clock, state } = await slowWorld($, on)
+    const shown = () => state.findings as { entries: { index: number }[]; snippets: Record<number, { source: string }> }
+    const opened = $.command.run(commandRun('laa-findings'))
+    await clock.advance(1000)
+    await opened
+    expect(Object.keys(shown().snippets)).toEqual(['0', '1'])
+
+    seen.setFile('.claude/laa/local/last-review.md', REVIEW_7)
+    await $.turn.complete(turnEnd('Found one more.'))
+    // The turn is over and the new entry is listed, with the code already known; its own is still being read.
+    expect(shown().entries.map(f => f.index)).toEqual([0, 1, 2, 3, 4, 5, 6])
+    expect(Object.keys(shown().snippets)).toEqual(['0', '1'])
+    await clock.advance(1000)
+    expect(shown().snippets[6]?.source).toBe('retry()\nbackoff()')
+  })
+
+  test('code read for a review that has since been replaced is not written over the newer one', async ($, on) => {
+    const { seen, clock, written } = await slowWorld($, on)
+    seen.setFile('.claude/laa/local/last-review.md', REVIEW_7)
+    const opened = $.command.run(commandRun('laa-findings'))
+    await clock.advance(1000)
+    await opened
+    // A turn's end starts reading the edited job.go again; before the read answers, the review drops its finding.
+    seen.setFile('src/export/job.go', 'retry()\nbackoff(attempt)')
+    await $.turn.complete(turnEnd('Edited the job.'))
+    seen.setFile('.claude/laa/local/last-review.md', REVIEW)
+    await $.turn.complete(turnEnd('Dropped the finding.'))
+    const count = written.findings?.length ?? 0
+    await clock.advance(1000)
+    // The late read is dropped: nothing is written after the review that no longer cites the file.
+    expect(written.findings).toHaveLength(count)
+    expect(Object.keys((written.findings?.at(-1) as { snippets: object }).snippets)).toEqual(['0', '1'])
   })
 
   test('loads none under visuals: minimal', MINIMAL, async ($, on) => {

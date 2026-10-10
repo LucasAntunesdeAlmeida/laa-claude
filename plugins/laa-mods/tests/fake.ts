@@ -23,6 +23,8 @@ export type Fake = {
   theme?: string
   // Sizes in bytes of files too large to write out in a test, by their path relative to the repo.
   sizes?: Record<string, number>
+  // Runs inside every read before it answers, with the path relative to the repo: how a test makes a read slow.
+  beforeRead?: (path: string) => Promise<void>
 }
 
 export const ROOT = 'C:/r'
@@ -39,8 +41,14 @@ export function fakeRepo(on: On, f: Fake = {}) {
   if (isAdopted) dirs.add(`${ROOT}/.claude/laa`).add(LEARNINGS)
   if (f.mapAge !== undefined) dirs.add(`${ROOT}/.claude/laa/project-map.md`)
   const texts = new Map<string, string>()
-  if (f.learnings !== undefined) texts.set(LEARNINGS, f.learnings)
-  for (const [path, text] of Object.entries(f.files ?? {})) texts.set(`${ROOT}/${path}`, text)
+  // How many times each file's text has changed, which is its age: an edit shows in the file's `mtimeMs`.
+  const ages = new Map<string, number>()
+  const put = (path: string, text: string) => {
+    if (texts.get(path) !== text) ages.set(path, (ages.get(path) ?? 0) + 1)
+    texts.set(path, text)
+  }
+  if (f.learnings !== undefined) put(LEARNINGS, f.learnings)
+  for (const [path, text] of Object.entries(f.files ?? {})) put(`${ROOT}/${path}`, text)
 
   const ok = (stdout = '') => ({ exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false })
   const fail = { ...ok(), exitCode: 1 }
@@ -55,15 +63,16 @@ export function fakeRepo(on: On, f: Fake = {}) {
     },
     file: (path: string) => texts.get(`${ROOT}/${path}`) ?? '',
     // What a tool the plugin let through would have written.
-    setFile: (path: string, text: string) => void texts.set(`${ROOT}/${path}`, text),
+    setFile: (path: string, text: string) => put(`${ROOT}/${path}`, text),
     toasts: [] as string[],
     // Every path the plugin read or asked the size of, in order, relative to the repo where it is inside it.
     reads: [] as string[],
     stats: [] as string[],
   }
   const relative = (path: string) => (norm(path).startsWith(`${ROOT}/`) ? norm(path).slice(ROOT.length + 1) : norm(path))
-  on('fs.read', ($, e) => {
+  on('fs.read', async ($, e) => {
     seen.reads.push(relative(e.path))
+    await f.beforeRead?.(relative(e.path))
     return { value: texts.get(norm(e.path)) ?? '' }
   })
   // A file's size and age; a path that is no file is left to the kit, which rejects it as a missing path is rejected.
@@ -71,7 +80,7 @@ export function fakeRepo(on: On, f: Fake = {}) {
     seen.stats.push(relative(e.path))
     const text = texts.get(norm(e.path))
     if (text === undefined) return next(e)
-    return { value: { kind: 'file' as const, size: f.sizes?.[relative(e.path)] ?? text.length, mtimeMs: 1, isLink: false } }
+    return { value: { kind: 'file' as const, size: f.sizes?.[relative(e.path)] ?? text.length, mtimeMs: ages.get(norm(e.path)) ?? 1, isLink: false } }
   })
   if (f.theme !== undefined) {
     const theme = f.theme
@@ -80,7 +89,7 @@ export function fakeRepo(on: On, f: Fake = {}) {
     }))
   }
   on('fs.write', ($, e) => {
-    texts.set(norm(e.path), e.text)
+    put(norm(e.path), e.text)
     return { value: undefined }
   })
   on('ui.toast', ($, e) => {

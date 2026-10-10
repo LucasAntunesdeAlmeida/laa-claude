@@ -71,7 +71,7 @@ const SNIPPET_BATCH = 8
 // Display state that is safe to lose: a reload drops at most one burst.
 const pendingSpawns: Spawn[] = []
 
-// The review text the findings were last loaded from, so an unchanged file costs no snippet reads and no write.
+// The review text the findings were last loaded from, so an unchanged review is not parsed or written again.
 let loadedReview: { repo: string; text: string } | null = null
 
 // The snippets already cut from a file, by its path and modification time, then by line.
@@ -383,19 +383,64 @@ async function startEvolve($: Engine) {
   $.ui.toast(filled.isFilled ? `${PRE}/laa:evolve is in the prompt. Press Enter to run it.` : `${PRE}type /laa:evolve to run it.`)
 }
 
-// Under `visuals: full` the findings carry the code around each one, and a review file that has not changed
-// since the last load is not parsed, read around, or written again.
-async function loadFindings($: Engine, top: string, isFull: boolean) {
-  const text = await readText($, `${top}/${REVIEW_FILE}`)
-  if (isFull && loadedReview?.repo === top && loadedReview.text === text) {
-    const shown = await read($, findings)
-    if (shown?.repo === top) return shown
+const isSameSnippet = (a: Snippet | undefined, b: Snippet | undefined) =>
+  a !== undefined && b !== undefined && a.source === b.source && a.startLine === b.startLine && a.path === b.path
+
+const hasSameSnippets = (a: Record<number, Snippet>, b: Record<number, Snippet>) =>
+  Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(k => isSameSnippet(a[Number(k)], b[Number(k)]))
+
+// The code `shown` already has for the findings still at the same place of the review, by their index.
+const keptSnippets = (shown: Findings | null, entries: readonly Finding[]) => {
+  const kept: Record<number, Snippet> = {}
+  for (const f of entries) {
+    const had = shown?.entries.some(o => o.index === f.index && o.location === f.location) ? shown.snippets?.[f.index] : undefined
+    if (had) kept[f.index] = had
   }
-  const next: Findings = { repo: top, entries: parseFindings(text) }
-  if (isFull) next.snippets = await loadSnippets($, top, next.entries)
-  await update($, findings, () => next)
-  if (isFull) loadedReview = { repo: top, text }
-  return next
+  return kept
+}
+
+// The code around the findings of `list`, read again where a cited file changed, and written only when it
+// differs from what `list` shows. `text` is the review `list` was parsed from: once another review has been
+// loaded, what was read for this one is dropped. Never throws, since a turn's end leaves it running.
+async function refreshSnippets($: Engine, top: string, text: string, list: Findings): Promise<Findings> {
+  try {
+    const snippets = await loadSnippets($, top, list.entries)
+    if (loadedReview?.repo !== top || loadedReview.text !== text) return list
+    if (hasSameSnippets(list.snippets ?? {}, snippets)) return list
+    return (await update($, findings, f => (f?.repo === top ? { ...f, snippets } : f))) ?? list
+  } catch {
+    // The module may have reloaded: the findings keep the code they had.
+    return list
+  }
+}
+
+// Under `visuals: full` the findings carry the code around each one. A review file that has not changed
+// since the last load is not parsed or written again; the files it cites are still asked their age, so an
+// edited one is cut again. The command and the pane's buttons wait for the code (`isAwaited`), so the pane
+// opens complete. A turn's end does not: it writes the entries at once, each keeping the code it already
+// had, and leaves the reading to finish on its own.
+async function loadFindings($: Engine, top: string, isFull: boolean, isAwaited = true) {
+  const text = await readText($, `${top}/${REVIEW_FILE}`)
+  if (!isFull) {
+    const next: Findings = { repo: top, entries: parseFindings(text) }
+    await update($, findings, () => next)
+    return next
+  }
+  const shown = await read($, findings)
+  let list = shown?.repo === top && loadedReview?.repo === top && loadedReview.text === text ? shown : null
+  if (!list) {
+    const entries = parseFindings(text)
+    const snippets = isAwaited ? await loadSnippets($, top, entries) : keptSnippets(shown?.repo === top ? shown : null, entries)
+    const next: Findings = { repo: top, entries, snippets }
+    await update($, findings, () => next)
+    loadedReview = { repo: top, text }
+    if (isAwaited) return next
+    list = next
+  }
+  const settled = refreshSnippets($, top, text, list)
+  if (isAwaited) return settled
+  void settled
+  return list
 }
 
 // The person pressed Fix: put a self-contained request for the fix in the prompt, for them to send.
@@ -690,7 +735,7 @@ export const register: Register = (on, options) => {
     void refresh($)
     // The model may have marked findings fixed: keep an open pane current.
     const shown = await read($, findings)
-    if (shown) await loadFindings($, shown.repo, isFull)
+    if (shown) await loadFindings($, shown.repo, isFull, false)
 
     const p = await read($, pipeline)
     if (p && p.hasCommitted && !p.isNudged) void $.clock.after(400, () => void suggestRetro($))
