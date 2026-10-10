@@ -51,6 +51,21 @@ async function world($: Engine, on: On, f: Fake) {
   return footers
 }
 
+const REVIEW_FILE = '.claude/laa/local/last-review.md'
+
+// A repo in the given state with the prompt box and the pane's place beneath the plugin, for pressing a
+// pane's buttons. Returns the fake's record and every text the plugin put in the prompt.
+function paneWorld(on: On, f: Fake) {
+  const seen = fakeRepo(on, f)
+  const filled: string[] = []
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('prompt.fill', ($, e) => {
+    filled.push(e.text)
+    return { isFilled: true }
+  })
+  return { seen, filled }
+}
+
 // The band on the terminal and the desktop: one tree for both.
 async function expectBand($: Engine, want: string) {
   for (const surface of BAND_SURFACES) {
@@ -389,6 +404,35 @@ describe('0.3.0 findings pane', () => {
     `)
   })
 
+  test('Fix, Fix all, and Dismiss: the prompt fill, the file write, and the toasts', async ($, on) => {
+    const { seen, filled } = paneWorld(on, { branch: 'feat/export', files: { [REVIEW_FILE]: REVIEW } })
+    await $.command.run(commandRun('laa-findings'))
+    const ui = await $.ui.mount({ ...PANE.findings, surface: 'terminal' })
+    const crit = 'CRIT src/export/csv.go:14 formula injection in exported cells → prefix cells that start with ='
+    const high = 'HIGH src/export/csv.go:52 rows dropped past the first page → follow the cursor until it is empty'
+
+    await ui.press({ key: 'fix0' })
+    expect(filled).toEqual([`Fix this finding from the last review, then mark it fixed in ${REVIEW_FILE}: ${crit}`])
+    expect(seen.toasts).toEqual(['laa · the fix is in the prompt. Press Enter to run it.'])
+
+    await ui.press({ key: 'fixHigh' })
+    expect(filled[1]).toBe(`Fix these findings from the last review, then mark each one fixed in ${REVIEW_FILE}: ${crit}; ${high}`)
+    expect(seen.toasts).toHaveLength(2)
+
+    await ui.press({ key: 'dismiss1' })
+    // Exactly the second finding's status line changed.
+    expect(seen.file(REVIEW_FILE)).toBe(REVIEW.replace(
+      '- fix: follow the cursor until it is empty\n- status: open',
+      '- fix: follow the cursor until it is empty\n- status: dismissed (in the laa-findings pane)',
+    ))
+    expect(seen.toasts[2]).toBe('laa · dismissed HIGH src/export/csv.go:52')
+    expect(await ui.find({ type: 'Text', text: 'rows dropped past the first page' })).toBeUndefined()
+    expect((await ui.find({ type: 'Button', key: 'fixHigh' }))?.props.label).toBe('Fix all CRIT and HIGH (1)')
+    // No file the review cites was looked at: minimal draws no code.
+    expect(seen.stats).toEqual([])
+    await ui.unmount()
+  })
+
   test('a review with nothing open', async ($, on) => {
     await world($, on, { branch: 'feat/export', files: { '.claude/laa/local/last-review.md': '# Review\n' } })
     await $.command.run(commandRun('laa-findings'))
@@ -434,6 +478,27 @@ describe('0.3.0 learnings pane', () => {
         </Box>
       </Box>
     `)
+  })
+
+  test('Reject and Evolve: the file write, the prompt fill, and the toasts', async ($, on) => {
+    const { seen, filled } = paneWorld(on, { branch: 'feat/export', learnings: LEARNINGS })
+    await $.command.run(commandRun('laa-learnings'))
+    const ui = await $.ui.mount({ ...PANE.learnings, surface: 'terminal' })
+
+    await ui.press({ key: 'reject1' })
+    // Exactly the second entry's status line changed.
+    expect(seen.learnings).toBe(LEARNINGS.replace(
+      '- proposal: add a migration check\n- status: open',
+      '- proposal: add a migration check\n- status: rejected (dismissed in the laa-learnings pane)',
+    ))
+    expect(seen.toasts).toEqual(['laa · rejected "2026-01-12 · laa:feature · missed migration"'])
+    expect(await ui.find({ type: 'Text', text: '2026-01-12 · laa:feature · missed migration' })).toBeUndefined()
+    expect(await ui.find({ type: 'Button', key: 'reject0' })).toBeDefined()
+
+    await ui.press({ key: 'evolve' })
+    expect(filled).toEqual(['/laa:evolve '])
+    expect(seen.toasts[1]).toBe('laa · /laa:evolve is in the prompt. Press Enter to run it.')
+    await ui.unmount()
   })
 
   test('nothing open', async ($, on) => {
