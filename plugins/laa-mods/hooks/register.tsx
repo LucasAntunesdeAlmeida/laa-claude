@@ -6,8 +6,8 @@ import { C } from './draw'
 import { cardFor, dropCard, ended, engineCard, finished, launched, noticeOf, phaseNow, spawned, startCard } from './engines'
 import type { Cards, Spawn } from './engines'
 import {
-  commitDir, countOpenHigh, countOpenLearnings, ENGINES, gateOfQuestions, HELP, isPersonAnswer, isUnder, journalFile, laaSkillOf,
-  LOCAL_DIR, nextActionOf, parentOf, parseFindings, parseJournal, parseLearnings, PIPELINES, progressOf, rejectLearning,
+  commitDir, countOpenHigh, countOpenLearnings, ENGINES, gateOfQuestions, HELP, isInGit, isPersonAnswer, isUnder, journalFile,
+  laaSkillOf, LOCAL_DIR, nextActionOf, normalize, parentOf, parseFindings, parseJournal, parseLearnings, PIPELINES, progressOf, rejectLearning,
   resolveFrom, REVIEW_FILE, setFindingStatus, slash, stepNumbersOf, stillOpen, suggestionFor, TRACKED,
 } from './git'
 import type { Repo } from './git'
@@ -61,9 +61,11 @@ const MAX_TURN_TAGS = 50
 const SPAWN_FLUSH_MS = 200
 const SPAWN_REARM = 64
 const MAX_PENDING = 1024
-// Snippets: how many findings get one, the largest file read for one, and how many files' worth are remembered.
+// Snippets: how many findings get one, the largest file read for one, the longest file name a location may
+// give for one, and how many files' worth are remembered.
 const MAX_SNIPPETS = 30
 const MAX_SNIPPET_BYTES = 1024 * 1024
+const MAX_SNIPPET_PATH = 4096
 const MAX_SNIPPET_CACHE = 60
 const SNIPPET_BATCH = 8
 
@@ -74,7 +76,7 @@ const pendingSpawns: Spawn[] = []
 // The review text the findings were last loaded from, so an unchanged review is not parsed or written again.
 let loadedReview: { repo: string; text: string } | null = null
 
-// The snippets already cut from a file, by its path and modification time, then by line.
+// The snippets already cut from a file, by where its path lands and its modification time, then by line.
 const snippetCache = new Map<string, Map<number, Cut | null>>()
 
 const denial = (repo: Repo, what: string) =>
@@ -316,26 +318,44 @@ async function setFilter($: Engine, pane: 'findings' | 'learnings', value: strin
 // The code around each finding, by the finding's index: at most 30 findings, files under the repo and
 // outside .git, each read and split once whatever the number of findings in it, eight at a time. A file that is
 // missing, over 1 MB, or binary gives no snippet; nothing here throws.
+// A file is the repo's own by where its path lands, links followed, against where the repo's root lands
+// (resolved once per load): a link that leads out of the repo, or into .git, is not read. What is read is
+// the place the path landed, and each snippet names its file by the path inside the repo.
 async function loadSnippets($: Engine, top: string, entries: readonly Finding[]) {
+  const root = normalize(top)
   const wanted = entries.slice(0, MAX_SNIPPETS).flatMap(f => {
     const at = locationOf(f.location)
-    const path = resolveFrom(top, at.file)
-    // The repo's own files only, checked on the path's spelling: no git call per finding.
-    if (at.line === null || !isUnder(path, top) || isUnder(path, `${top}/.git`)) return []
-    return [{ index: f.index, file: at.file, path, line: at.line }]
+    if (at.line === null || at.file.length > MAX_SNIPPET_PATH) return []
+    const path = resolveFrom(root, at.file)
+    // Checked on the path's spelling first, so a location outside the repo costs no file system call.
+    if (!isUnder(path, root) || isInGit(path, root)) return []
+    return [{ index: f.index, file: path.slice(root.length + 1), path, line: at.line }]
   })
+  const snippets: Record<number, Snippet> = {}
+  if (wanted.length === 0) return snippets
+  let realTop: string
+  try {
+    const landed = (await $.fs.stat(root, { resolve: true })).realPath
+    if (landed === undefined) return snippets
+    realTop = slash(landed)
+  } catch {
+    // The root can't be resolved: no file can be shown to be under it.
+    return snippets
+  }
   const cut = new Map<string, Map<number, Cut | null>>()
   const paths = [...new Set(wanted.map(w => w.path))]
   for (let at = 0; at < paths.length; at += SNIPPET_BATCH) {
     await Promise.all(paths.slice(at, at + SNIPPET_BATCH).map(async path => {
       try {
-        const stat = await $.fs.stat(path)
-        if (stat.kind !== 'file' || stat.size > MAX_SNIPPET_BYTES) return
-        const key = `${path}\n${stat.mtimeMs}`
+        const stat = await $.fs.stat(path, { resolve: true })
+        if (stat.kind !== 'file' || stat.size > MAX_SNIPPET_BYTES || stat.realPath === undefined) return
+        const real = slash(stat.realPath)
+        if (!isUnder(real, realTop) || isInGit(real, realTop)) return
+        const key = `${real}\n${stat.mtimeMs}`
         const lines = wanted.filter(w => w.path === path).map(w => w.line)
         let known = snippetCache.get(key)
         if (!known || lines.some(line => !known?.has(line))) {
-          const text = String(await $.fs.read(path))
+          const text = String(await $.fs.read(real))
           known = snippetsOf(text, lines)
           snippetCache.delete(key)
           snippetCache.set(key, known)
@@ -347,7 +367,6 @@ async function loadSnippets($: Engine, top: string, entries: readonly Finding[])
       }
     }))
   }
-  const snippets: Record<number, Snippet> = {}
   for (const w of wanted) {
     const snippet = cut.get(w.path)?.get(w.line)
     if (snippet) snippets[w.index] = { ...snippet, path: w.file }

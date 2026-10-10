@@ -48,6 +48,11 @@ export const isUnder = (file: string, dir: string) => {
   return norm(file).startsWith(`${norm(dir).replace(/\/+$/, '')}/`)
 }
 
+// Whether a file under `dir` is inside a `.git` directory, however its case is spelled: a file system
+// that ignores case opens `.GIT/config` as git's own.
+export const isInGit = (file: string, dir: string) =>
+  slash(file).slice(slash(dir).replace(/\/+$/, '').length).split('/').some(part => part.toLowerCase() === '.git')
+
 const unquote = (s: string) => s.replace(/^(["'])(.*)\1$/, '$2')
 
 // Where a shell command runs `git commit`, if it does: the `-C` directory, else the

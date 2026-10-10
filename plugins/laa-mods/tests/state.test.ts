@@ -256,7 +256,8 @@ describe('finding snippets', () => {
       0: { source: 'line 1\nline 2\nline 3\nline 4', startLine: 1, path: 'src/export/csv.go' },
       1: { source: 'line 6\nline 7\nline 8\nline 9', startLine: 6, path: 'src/export/csv.go' },
     })
-    expect(seen.stats.toSorted()).toEqual(['src/export/csv.go', 'src/export/gone.go', 'src/export/huge.go'])
+    // The repo's root is asked where it lands, once; then each file under it, and nothing outside it.
+    expect(seen.stats.toSorted()).toEqual(['.', 'src/export/csv.go', 'src/export/gone.go', 'src/export/huge.go'])
     expect(seen.reads.filter(p => p.startsWith('src/'))).toEqual(['src/export/csv.go'])
     expect(seen.reads.some(p => p.includes('secret'))).toBe(false)
   })

@@ -25,6 +25,10 @@ export type Fake = {
   sizes?: Record<string, number>
   // Runs inside every read before it answers, with the path relative to the repo: how a test makes a read slow.
   beforeRead?: (path: string) => Promise<void>
+  // Symbolic links in the repo, by their path relative to it: where each lands (an absolute path) and the text there.
+  links?: Record<string, { to: string; text: string }>
+  // Where the repo's root really is, when the root as git names it is itself reached through a link.
+  realRoot?: string
 }
 
 export const ROOT = 'C:/r'
@@ -55,7 +59,20 @@ export function fakeRepo(on: On, f: Fake = {}) {
 
   mock.store(on, f.store)
   on('session.cwd', () => ({ value: f.cwd ?? ROOT }))
-  on('fs.exists', ($, e) => ({ value: dirs.has(norm(e.path)) || texts.has(norm(e.path)) }))
+  // Where a path leads: a link's target, else the path itself.
+  const links = new Map<string, string>()
+  for (const [path, link] of Object.entries(f.links ?? {})) {
+    links.set(`${ROOT}/${path}`, norm(link.to))
+    put(norm(link.to), link.text)
+  }
+  const landing = (path: string) => links.get(norm(path)) ?? norm(path)
+  // Where a path lands, as `realPath` spells it: under `realRoot` for what the repo itself holds.
+  const realOf = (path: string) => {
+    const at = landing(path)
+    const isInRepo = at === ROOT || at.startsWith(`${ROOT}/`)
+    return f.realRoot !== undefined && isInRepo ? f.realRoot + at.slice(ROOT.length) : at
+  }
+  on('fs.exists', ($, e) => ({ value: dirs.has(norm(e.path)) || texts.has(landing(e.path)) }))
   // The files as the plugin last wrote them, and every toast it showed.
   const seen = {
     get learnings() {
@@ -69,18 +86,37 @@ export function fakeRepo(on: On, f: Fake = {}) {
     reads: [] as string[],
     stats: [] as string[],
   }
-  const relative = (path: string) => (norm(path).startsWith(`${ROOT}/`) ? norm(path).slice(ROOT.length + 1) : norm(path))
+  // A path as the tests name it: relative to the repo ('.' for its root), whether spelled under the root or
+  // under `realRoot`; as given when it is outside both.
+  const relative = (path: string) => {
+    const p = norm(path)
+    for (const root of [ROOT, ...(f.realRoot === undefined ? [] : [f.realRoot])]) {
+      if (p === root) return '.'
+      if (p.startsWith(`${root}/`)) return p.slice(root.length + 1)
+    }
+    return p
+  }
+  // A path as the files are kept: a `realRoot` spelling back under the root, a link followed.
+  const kept = (path: string) => {
+    const p = norm(path)
+    const isReal = f.realRoot !== undefined && (p === f.realRoot || p.startsWith(`${f.realRoot}/`))
+    return landing(isReal ? ROOT + p.slice((f.realRoot ?? '').length) : p)
+  }
   on('fs.read', async ($, e) => {
     seen.reads.push(relative(e.path))
     await f.beforeRead?.(relative(e.path))
-    return { value: texts.get(norm(e.path)) ?? '' }
+    return { value: texts.get(kept(e.path)) ?? '' }
   })
-  // A file's size and age; a path that is no file is left to the kit, which rejects it as a missing path is rejected.
+  // A file's size and age, a directory, and where either lands when asked; a path that is neither is left to
+  // the kit, which rejects it as a missing path is rejected.
   on('fs.stat', ($, e, next) => {
     seen.stats.push(relative(e.path))
-    const text = texts.get(norm(e.path))
-    if (text === undefined) return next(e)
-    return { value: { kind: 'file' as const, size: f.sizes?.[relative(e.path)] ?? text.length, mtimeMs: ages.get(norm(e.path)) ?? 1, isLink: false } }
+    const at = kept(e.path)
+    const where = { isLink: links.has(norm(e.path)), ...(e.resolve ? { realPath: realOf(at) } : {}) }
+    const text = texts.get(at)
+    if (text !== undefined) return { value: { kind: 'file' as const, size: f.sizes?.[relative(e.path)] ?? text.length, mtimeMs: ages.get(at) ?? 1, ...where } }
+    if (dirs.has(at)) return { value: { kind: 'dir' as const, size: 0, mtimeMs: 1, ...where } }
+    return next(e)
   })
   if (f.theme !== undefined) {
     const theme = f.theme

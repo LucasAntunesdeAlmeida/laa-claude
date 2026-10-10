@@ -3,6 +3,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { decodeCells, DEFAULT_FG } from '../hooks/draw'
+import { isInGit } from '../hooks/git'
 import { snippetOf, snippetsOf } from '../hooks/panes'
 import { ALL_SURFACES, bash, commandRun, fakeRepo, PANE, ROOT, show, turnEnd } from './fake'
 import type { Drawn, Fake } from './fake'
@@ -438,6 +439,83 @@ describe('finding snippets · safe to draw', () => {
       expect(Math.max(...source.split('\n').map(l => l.length)), surface).toBe(200)
       expect(all(keyed(tree, 'finding1') ?? '', 'Code'), surface).toEqual([])
       expect(await ui.find({ type: 'Text', text: 'binary checked in' }), surface).toBeDefined()
+      await ui.unmount()
+    }
+  })
+
+  test('a link that lands outside the repo gives no code, and one that lands inside it does', async ($, on) => {
+    const review = [
+      '## HIGH · internal/billing/vendor.go:1 · a link out of the repo',
+      '- status: open',
+      '## LOW · internal/billing/alias.go:3 · a link to a file of the repo',
+      '- status: open',
+      '',
+    ].join('\n')
+    const { seen } = await world($, on, {
+      files: { [REVIEW_FILE]: review, 'internal/billing/invoice.go': SOURCE },
+      links: {
+        'internal/billing/vendor.go': { to: 'C:/other/secret.go', text: 'token = "invented"' },
+        'internal/billing/alias.go': { to: `${ROOT}/internal/billing/invoice.go`, text: SOURCE },
+      },
+    })
+    await $.command.run(commandRun('laa-findings'))
+    const ui = await $.ui.mount({ ...PANE.findings, surface: 'terminal' })
+    const tree = (await ui.drawn()) as Drawn
+    expect(all(keyed(tree, 'finding0') ?? '', 'Code')).toEqual([])
+    expect(show(tree)).not.toContain('invented')
+    // What is read is where the path lands, and the link out of the repo is never read.
+    expect(seen.reads.filter(p => !p.startsWith('.claude/'))).toEqual(['internal/billing/invoice.go'])
+    expect(all(keyed(tree, 'finding1') ?? '', 'Code').map(c => c.props)).toEqual([
+      { source: 'line 1\nline 2\nline 3\nline 4\nline 5', startLine: 1, path: 'internal/billing/alias.go', wrap: 'truncate-end' },
+    ])
+    await ui.unmount()
+  })
+
+  test('a repo whose root is itself reached through a link still shows its code', async ($, on) => {
+    await world($, on, { files: FILES, sizes: SIZES, realRoot: 'C:/store/r' })
+    await $.command.run(commandRun('laa-findings'))
+    const ui = await $.ui.mount({ ...PANE.findings, surface: 'terminal' })
+    expect(all((await ui.drawn()) as Drawn, 'Code')).toHaveLength(2)
+    await ui.unmount()
+  })
+
+  test("git's own files give no code, however .git is spelled", async ($, on) => {
+    const review = ['## HIGH · .GIT/config:1 · remote url', '- status: open', '## LOW · .git/config:1 · remote url', '- status: open', ''].join('\n')
+    const { seen } = await world($, on, { files: { [REVIEW_FILE]: review, '.GIT/config': '[remote "origin"]', '.git/config': '[remote "origin"]' } })
+    await $.command.run(commandRun('laa-findings'))
+    const ui = await $.ui.mount({ ...PANE.findings, surface: 'terminal' })
+    expect(all((await ui.drawn()) as Drawn, 'Code')).toEqual([])
+    expect(seen.reads.filter(p => p.toLowerCase().startsWith('.git'))).toEqual([])
+    await ui.unmount()
+    // On a root with no drive letter, where the path's spelling is compared as written.
+    expect(isInGit('/w/r/.GIT/config', '/w/r')).toBe(true)
+    expect(isInGit('/w/r/vendor/lib/.git/HEAD', '/w/r')).toBe(true)
+    expect(isInGit('/w/r/.github/workflows/ci.yml', '/w/r')).toBe(false)
+    expect(isInGit('/w/r/.gitignore', '/w/r/')).toBe(false)
+  })
+
+  test('the code names its file by the path inside the repo, never by the location as written', async ($, on) => {
+    const review = ['## HIGH · ./internal/../internal/billing/invoice.go:3 · roundabout', '- status: open', ''].join('\n')
+    await world($, on, { files: { [REVIEW_FILE]: review, 'internal/billing/invoice.go': SOURCE } })
+    await $.command.run(commandRun('laa-findings'))
+    const ui = await $.ui.mount({ ...PANE.findings, surface: 'terminal' })
+    expect(all((await ui.drawn()) as Drawn, 'Code').map(c => c.props?.path)).toEqual(['internal/billing/invoice.go'])
+    await ui.unmount()
+  })
+
+  test('a location some ten thousand characters long still opens the pane, with no code for it', async ($, on) => {
+    const long = `${'./'.repeat(5000)}README.md:1`
+    expect(long.length).toBeGreaterThan(10000)
+    const review = [`## LOW · ${long} · a long way round`, '- status: open', '## HIGH · internal/billing/invoice.go:3 · near', '- status: open', ''].join('\n')
+    await world($, on, { files: { [REVIEW_FILE]: review, 'README.md': '# Invented', 'internal/billing/invoice.go': SOURCE } })
+    await $.command.run(commandRun('laa-findings'))
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ ...PANE.findings, surface })
+      // A refused tree rejects here.
+      const tree = (await ui.drawn()) as Drawn
+      expect(await ui.find({ type: 'Text', text: 'a long way round' }), surface).toBeDefined()
+      expect(all(keyed(tree, 'finding0') ?? '', 'Code'), surface).toEqual([])
+      expect(all(keyed(tree, 'finding1') ?? '', 'Code'), surface).toHaveLength(1)
       await ui.unmount()
     }
   })

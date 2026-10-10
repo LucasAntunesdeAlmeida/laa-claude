@@ -56,7 +56,7 @@ export type Snippet = {
   source: string
   // The number of the first line of `source` in its file, from 1.
   startLine: number
-  // The file as the finding names it, relative to the repo.
+  // The file by its path inside the repo, normalized; never the location as the review wrote it.
   path: string
 }
 
