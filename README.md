@@ -160,8 +160,8 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
 - **Footer label**: the prompt footer's mode labels show the run too, as `laa:fix 3/7` or `laa:feature ★`.
 - **Spinner, prompt hint, and turn line**: the same run in three more places, in the same words as the band and the footer.
   - The spinner's line: `laa:fix · Investigate 3/7`, `laa:fix · engine investigate · Verify` while a workflow runs, or `laa:feature · ★ Approve the plan?` at a gate. A message Claude Code sets itself (while compacting, say) is left alone.
-  - The hint under the prompt, while a gate waits on you: `★ waiting on you: Approve the plan?`.
-  - The line that closes a turn: ` · laa:fix 3/7` after the duration, on the turns that belonged to a run.
+  - The hint under the prompt, while a gate waits on you: `★ waiting on you: Approve the plan?`. Once you answer, the run shows its step again, here and in the band, while Claude works on the answer.
+  - The line that closes a turn: ` · laa:fix 3/7` after the duration, on turns that end mid-run (at a gate, while a workflow runs, or stopped without a report). The turn that closes a run with its report gets none.
 - **Engine card**: the transcript row of a laa workflow gets a card under it.
   - While it runs: the engine and how many agents it started, its phases (`✓ Investigate ━ ✓ Cluster ━ ● Verify`), and the agents by role (`investigate ×5 · cluster · verify ×9`).
   - When it ends: the first line of its report, or `✗ failed`. A phase no agent worked in keeps its label and gets no mark.
@@ -171,7 +171,7 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
 - **`/laa-help`**: every laa command grouped by job (Understand, Change, Check, Continue, Set up, Learn), the engines, this repo's state, and the one command worth running next. It answers instantly, with no model turn.
 - **Findings pane**: `/laa-findings [repo path]` lists the open findings `/laa:review` saved to `.claude/laa/local/last-review.md`.
   - A bar and its legend count them by severity (`█ CRIT 1 · ▓ HIGH 2 · ▒ MED 4 · ░ LOW 1`), and with more than three findings a filter shows all, CRIT and HIGH, MED, or LOW.
-  - Each finding shows the code around its line, from files in the repo under 1 MB. In the terminal its location (`src/export/csv.go:14`) is a link to the file.
+  - Each finding shows the code around its line, from files in the repo under 1 MB. In the terminal its location (`src/export/csv.go:14`) is a link to the file, unless the file is of a type your system would run when opened (a script, a program, a shortcut).
   - **Fix** puts a self-contained fix request in the prompt for you to send, and **Fix all CRIT and HIGH** (hotkey `f`) does the same for every high finding.
   - **Dismiss** marks a finding `status: dismissed`.
 - **Next step**: when a laa run's closing report has a laa command in its **Next** list, the prompt box suggests the first one (Tab to take it), once.
