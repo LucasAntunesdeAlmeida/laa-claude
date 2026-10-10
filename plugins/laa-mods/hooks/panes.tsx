@@ -24,6 +24,7 @@ const SEVERITIES = [
 ] as const
 const SCOPES = [
   { name: 'local', glyph: '▓' },
+  { name: 'other', glyph: '▒' },
   { name: 'generic', glyph: '░' },
 ] as const
 
@@ -37,6 +38,7 @@ const SEVERITY_OPTIONS = [
 const SCOPE_OPTIONS = [
   { value: 'all', label: 'all' },
   { value: 'local', label: 'local' },
+  { value: 'other', label: 'other' },
   { value: 'generic', label: 'generic' },
 ] as const
 
@@ -49,9 +51,11 @@ export const locationOf = (location: string): { file: string; line: number | nul
 
 // The lines of a file around `line` (two either side), safe to draw: no `\r`, any other control character
 // but a tab as `?`, each line cut at 200 characters. null when the file is binary (holds a NUL) or has no such line.
+// A byte order mark is no part of the first line, and the line break that ends the file starts no line after it.
 export const snippetOf = (text: string, line: number): { source: string; startLine: number } | null => {
   if (text.includes('\u0000')) return null
-  const lines = text.split('\n')
+  const lines = text.replace(/^\ufeff/, '').split('\n')
+  if (lines.length > 1 && lines.at(-1) === '') lines.pop()
   if (!Number.isInteger(line) || line < 1 || line > lines.length) return null
   const startLine = Math.max(1, line - AROUND)
   const source = lines
@@ -112,6 +116,13 @@ const isHigh = (f: Finding) => f.tag === 'CRIT' || f.tag === 'HIGH'
 const isShownFinding = (f: Finding, filter: string) =>
   filter === 'high' ? isHigh(f) : filter === 'med' ? f.tag === 'MED' : filter === 'low' ? f.tag === 'LOW' : true
 
+// A learning's scope as the pane counts and filters it: `local` or `generic` by the scope's leading word,
+// whatever its case or what follows it (`Local`, `generic (upstream)`); anything else, none included, is `other`.
+const scopeOf = (entry: Learning) => {
+  const word = /^[a-z]+/.exec(String(entry.scope ?? '').trim().toLowerCase())?.[0]
+  return word === 'local' || word === 'generic' ? word : 'other'
+}
+
 // A filter as one of the values its Select offers; anything else counts as `all`.
 const filterOf = (options: readonly { value: string }[], filter: string) =>
   options.some(o => o.value === filter) ? filter : 'all'
@@ -135,9 +146,14 @@ const barRow = (els: Els, key: string, parts: readonly Part[], columns: number):
   const bar = barOf(parts, Math.min(Math.floor(columns) - 2, MAX_BAR))
   const raster = bar ? rasterOf([...bar].length, 1, wordsOf([{ text: bar }])) : null
   if (!raster) return null
-  const { Raster } = els
-  const row = <Raster key={key} columns={raster.columns} rows={raster.rows} cells={raster.cells} />
-  return isBuilt(row, 'Raster') ? row : null
+  try {
+    const { Raster } = els
+    const row = <Raster key={key} columns={raster.columns} rows={raster.rows} cells={raster.cells} />
+    return isBuilt(row, 'Raster') ? row : null
+  } catch {
+    // The bar is an extra: the legend and the rest of the pane still draw.
+    return null
+  }
 }
 
 // A pane's filter as a Select, or null where there is none to offer: three entries or fewer, or a surface
@@ -219,7 +235,7 @@ export const findingsPane = (els: Els, input: FindingsInput, acts: FindingsActs)
 }
 
 // The learnings pane under `visuals: full`: the repo (dim); on the terminal a Raster bar by scope (▓ local,
-// ░ generic) and on every surface its legend; `<Select key="scope">` under the same conditions as the
+// ░ generic, and ▒ other between them when a learning names neither) and on every surface its legend; `<Select key="scope">` under the same conditions as the
 // findings pane's; then each learning the filter shows, as 0.3.0 draws it, with its `reject{index}` Button;
 // last, `evolve` (hotkey e). Returns null to draw the 0.3.0 pane.
 export const learningsPane = (els: Els, input: LearningsInput, acts: LearningsActs): RenderElement | null => {
@@ -236,10 +252,13 @@ export const learningsPane = (els: Els, input: LearningsInput, acts: LearningsAc
       </Box>
     )
   }
-  const parts = partsOf(SCOPES, entries, entry => entry.scope)
-  const filter = filterOf(SCOPE_OPTIONS, input.filter)
-  const select = filterRow(els, 'scope', SCOPE_OPTIONS, filter, entries.length, acts.onFilter)
-  const shown = select && filter !== 'all' ? entries.filter(entry => entry.scope === filter) : entries
+  // `other` is counted, named, and offered only when some learning falls there.
+  const hasOther = entries.some(entry => scopeOf(entry) === 'other')
+  const parts = partsOf(SCOPES, entries, scopeOf).filter(p => p.name !== 'other' || hasOther)
+  const options = SCOPE_OPTIONS.filter(o => o.value !== 'other' || hasOther)
+  const filter = filterOf(options, input.filter)
+  const select = filterRow(els, 'scope', options, filter, entries.length, acts.onFilter)
+  const shown = select && filter !== 'all' ? entries.filter(entry => scopeOf(entry) === filter) : entries
   return (
     <Box flexDirection="column">
       <Text dimColor>{list.repo}</Text>

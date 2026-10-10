@@ -3,6 +3,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { decodeCells, DEFAULT_FG } from '../hooks/draw'
+import { snippetOf } from '../hooks/panes'
 import { ALL_SURFACES, bash, commandRun, fakeRepo, PANE, ROOT, show, turnEnd } from './fake'
 import type { Drawn, Fake } from './fake'
 
@@ -372,7 +373,96 @@ describe('findings pane · visuals: full', () => {
   })
 })
 
+// Invented files a snippet must be made safe from: one with terminal control characters and a line far too
+// long, and one that is binary.
+const UNSAFE = ['plain', 'esc \u001b[31m bel \u0007 nel \u0085 tab \t end', `long ${'x'.repeat(300)}`, 'last'].join('\n')
+const UNSAFE_REVIEW = [
+  '## HIGH · internal/billing/unsafe.go:2 · escape sequences in a fixture',
+  '- status: open',
+  '## LOW · internal/billing/blob.go:1 · binary checked in',
+  '- status: open',
+  '',
+].join('\n')
+
+describe('finding snippets · safe to draw', () => {
+  test('control characters become ?, a long line is cut, and a binary file gives no code', async ($, on) => {
+    await world($, on, {
+      files: { [REVIEW_FILE]: UNSAFE_REVIEW, 'internal/billing/unsafe.go': UNSAFE, 'internal/billing/blob.go': 'head\u0000tail\nmore' },
+    })
+    await $.command.run(commandRun('laa-findings'))
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ ...PANE.findings, surface })
+      // A refused tree rejects here: the pane draws.
+      const tree = (await ui.drawn()) as Drawn
+      const code = all(keyed(tree, 'finding0') ?? '', 'Code')
+      expect(code.map(c => c.props), surface).toEqual([
+        {
+          source: ['plain', 'esc ?[31m bel ? nel ? tab \t end', `long ${'x'.repeat(195)}`, 'last'].join('\n'),
+          startLine: 1,
+          path: 'internal/billing/unsafe.go',
+          wrap: 'truncate-end',
+        },
+      ])
+      const source = String(code[0]?.props?.source)
+      expect(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(source), surface).toBe(false)
+      expect(Math.max(...source.split('\n').map(l => l.length)), surface).toBe(200)
+      expect(all(keyed(tree, 'finding1') ?? '', 'Code'), surface).toEqual([])
+      expect(await ui.find({ type: 'Text', text: 'binary checked in' }), surface).toBeDefined()
+      await ui.unmount()
+    }
+  })
+
+  test('the line break that ends a file starts no line, and a byte order mark is left out', () => {
+    expect(snippetOf('one\ntwo\nthree\n', 3)).toEqual({ source: 'one\ntwo\nthree', startLine: 1 })
+    expect(snippetOf('one\ntwo\nthree\n', 4)).toBeNull()
+    expect(snippetOf('one\r\ntwo\r\n', 2)).toEqual({ source: 'one\ntwo', startLine: 1 })
+    // Only the one break that ends the file: an empty line before it is a line.
+    expect(snippetOf('one\n\n', 2)).toEqual({ source: 'one\n', startLine: 1 })
+    expect(snippetOf('', 1)).toEqual({ source: '', startLine: 1 })
+    expect(snippetOf('\ufeffpackage billing\nfunc total() {}', 1)).toEqual({ source: 'package billing\nfunc total() {}', startLine: 1 })
+    expect(snippetOf('head\u0000tail', 1)).toBeNull()
+  })
+})
+
+// Invented learnings whose scopes are not written as the format says: three that still name local or generic,
+// and three that name neither.
+const ODD_SCOPES = [
+  '# Learnings',
+  '',
+  ...learning('capital letter', 'Local'),
+  ...learning('with a note', 'generic (upstream)'),
+  ...learning('both named', 'local | generic'),
+  ...learning('team wide', 'team'),
+  ...learning('nothing given', ''),
+  ...learning('a number', '2'),
+].join('\n')
+
 describe('learnings pane · visuals: full', () => {
+  test('counts a scope by its leading word, and anything else as other, with its own shade and filter', async ($, on) => {
+    await world($, on, { learnings: ODD_SCOPES })
+    await $.command.run(commandRun('laa-learnings'))
+    const ui = await $.ui.mount({ ...PANE.learnings, surface: 'terminal' })
+    const keys = async () => all((await ui.drawn()) as Drawn, 'Button').map(b => String(b.props?.key))
+    expect((await legend(ui))?.text).toBe('▓ local 2 · ▒ other 3 · ░ generic 1')
+    const bar = all((await ui.drawn()) as Drawn, 'Raster')[0]
+    expect(decodeCells(String(bar?.props?.cells)).text).toBe('▓'.repeat(13) + '▒'.repeat(21) + '░'.repeat(6))
+    expect((await ui.find({ type: 'Select', key: 'scope' }))?.props.options).toEqual([
+      { value: 'all', label: 'all' },
+      { value: 'local', label: 'local' },
+      { value: 'other', label: 'other' },
+      { value: 'generic', label: 'generic' },
+    ])
+    await ui.select({ key: 'scope', value: 'local' })
+    expect(await keys()).toEqual(['reject0', 'reject2', 'evolve'])
+    await ui.select({ key: 'scope', value: 'generic' })
+    expect(await keys()).toEqual(['reject1', 'evolve'])
+    await ui.select({ key: 'scope', value: 'other' })
+    expect(await keys()).toEqual(['reject3', 'reject4', 'reject5', 'evolve'])
+    // The scope is still drawn as the file has it.
+    expect(await ui.find({ type: 'Text', text: 'team · correction · CLAUDE.md' })).toBeDefined()
+    await ui.unmount()
+  })
+
   test('draws the scope bar on the terminal, its legend everywhere, and every open learning', async ($, on) => {
     await world($, on, { learnings: LEARNINGS })
     await $.command.run(commandRun('laa-learnings'))
