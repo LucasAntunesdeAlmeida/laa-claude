@@ -8,9 +8,9 @@ import type { Cards, Spawn } from './engines'
 import {
   commitDir, countOpenHigh, countOpenLearnings, ENGINES, gateOfQuestions, HELP, isUnder, journalFile, laaSkillOf,
   LOCAL_DIR, nextActionOf, parentOf, parseFindings, parseJournal, parseLearnings, PIPELINES, progressOf, rejectLearning,
-  resolveFrom, REVIEW_FILE, setFindingStatus, slash, stillOpen, suggestionFor, TRACKED,
+  resolveFrom, REVIEW_FILE, setFindingStatus, slash, stepNumbersOf, stillOpen, suggestionFor, TRACKED,
 } from './git'
-import type { Progress, Repo } from './git'
+import type { Repo } from './git'
 import { gateText, runTag, spinnerText, turnTagFor } from './labels'
 import { findingsPane, learningsPane, locationOf, snippetOf } from './panes'
 import { closingOf, isLaaClosing, reportCard } from './report'
@@ -220,12 +220,14 @@ async function refresh($: Engine) {
 
 // What a block of laa output says about the run: a mode line starts one, steps and gates move it,
 // and the closing report (a status line, then its Next list) ends it. A step line after the run
-// was dropped picks the pipeline back up, with no record of the steps before it.
-// `closingText` is the block itself under `visuals: full`: when it closes a run, its key (the status line
-// plus a hash of what stands under it) is recorded, which is how the report card knows the block as laa's
-// and which ✗ report is the newest.
-async function applyProgress($: Engine, p: Progress, closingText?: string) {
+// was dropped picks the pipeline back up, with no record of the steps before it. Every step line of the
+// block counts as seen, the last one being where the run stands.
+// Under `visuals: full`, when the block closes a run, its key (the status line plus a hash of what stands
+// under it) is recorded, which is how the report card knows the block as laa's and which ✗ report is the newest.
+async function applyProgress($: Engine, text: string, isFull: boolean) {
+  const p = progressOf(text)
   if (!p.skill && !p.step && !p.gate && !p.isClosing) return
+  const printed = stepNumbersOf(text)
   const p0 = await read($, pipeline)
   let hadRun = false as boolean
   await update($, run, (r): Run | null => {
@@ -238,13 +240,14 @@ async function applyProgress($: Engine, p: Progress, closingText?: string) {
     if (p.step) {
       const isSame = next.step?.n === p.step.n && next.step.last === p.step.last
       next = { ...next, step: p.step, gate: null, engine: isSame ? next.engine : null }
-      if (next.seen && !next.seen.includes(p.step.n)) next = { ...next, seen: [...next.seen, p.step.n] }
+      const seen = next.seen
+      if (seen && printed.some(n => !seen.includes(n))) next = { ...next, seen: [...new Set([...seen, ...printed])].sort((a, b) => a - b) }
     }
     if (p.gate) next = { ...next, gate: p.gate }
     return next
   })
-  if (closingText === undefined || !p.isClosing || !hadRun) return
-  const closing = closingOf(closingText)
+  if (!isFull || !p.isClosing || !hadRun) return
+  const closing = closingOf(text)
   if (closing) await update($, closings, was => (was.at(-1) === closing.key ? was : [...was, closing.key].slice(-MAX_CLOSINGS)))
 }
 
@@ -645,7 +648,7 @@ export const register: Register = (on, options) => {
     try {
       if (e.door === 'response' && e.message.type === 'assistant') {
         const text = textOf(e.message.content)
-        await applyProgress($, progressOf(text), isFull ? text : undefined)
+        await applyProgress($, text, isFull)
       } else if (e.door === 'delivery' || (e.origin as { kind?: string }).kind === 'task-notification') {
         const was = isFull ? (await read($, run))?.engine ?? null : null
         // A background task finished (a workflow's notification, folded into a turn or starting its own).
@@ -664,7 +667,7 @@ export const register: Register = (on, options) => {
       void refresh($)
       return next(e)
     }
-    await applyProgress($, progressOf(e.answer), isFull ? e.answer : undefined)
+    await applyProgress($, e.answer, isFull)
     if (isFull) {
       try {
         await tagTurn($, e.durationMs)

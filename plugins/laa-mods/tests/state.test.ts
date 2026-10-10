@@ -136,8 +136,8 @@ describe('run history', () => {
     await $.session.append(reply('**▸ 0/7 · Load context**\n\n**▸ 1/7 · Triage the size**'))
     await $.session.append(reply('**▸ 3/7 · Investigate** · 5 angles', 'row-2'))
     await $.session.append(reply('**▸ 3/7 · Investigate** · 5 angles', 'row-3'))
-    // A block's last step line is the one that counts: step 0 was passed within one block.
-    expect(state.run).toMatchObject({ step: { n: 3 }, seen: [1, 3] })
+    // A block's last step line is where the run stands; every step line in it counts as seen.
+    expect(state.run).toMatchObject({ step: { n: 3 }, seen: [0, 1, 3] })
 
     await $.session.append(reply(CLOSING, 'row-4'))
     await $.session.append(reply('**▸ 6/7 · Review** · reviewer', 'row-5'))

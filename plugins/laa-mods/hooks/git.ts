@@ -166,8 +166,10 @@ export const parseJournal = (text: string): Journal | null => {
 // `**laa:<skill>** · …` (mode), `**▸ n/last · Title**` (step), `**★ Question**` (gate), and `**Next**` (the closing report).
 export type Progress = { skill: string | null; step: Step | null; gate: string | null; isClosing: boolean }
 
+const STEP_LINE = /\*\*▸ (\d+)\/(\d+) · ([^*\n]+?)\*\*/g
+
 export const progressOf = (text: string): Progress => {
-  const steps = [...text.matchAll(/\*\*▸ (\d+)\/(\d+) · ([^*\n]+?)\*\*/g)]
+  const steps = [...text.matchAll(STEP_LINE)]
   const last = steps[steps.length - 1]
   const gates = [...text.matchAll(/^\*\*★ ([^*\n]+?)\*\*/gm)]
   return {
@@ -178,6 +180,9 @@ export const progressOf = (text: string): Progress => {
     isClosing: /^\*\*[✓✗] [^\n]*\n[\s\S]*^\*\*Next\*\*\s*$/m.test(text),
   }
 }
+
+// The number of every step line in a block, in the order printed: one block may pass several steps.
+export const stepNumbersOf = (text: string): number[] => [...text.matchAll(STEP_LINE)].map(m => Number(m[1]))
 
 // The first laa command in a closing report's Next list (`/laa:retro`, `/laa-findings`), if it has one.
 export const nextActionOf = (text: string) => {

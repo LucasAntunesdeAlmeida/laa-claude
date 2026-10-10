@@ -5,6 +5,7 @@ import type { On } from 'claude-code'
 import type { Run } from '../types'
 import { decodeCells, DEFAULT_FG, paletteOf } from '../hooks/draw'
 import type { Els } from '../hooks/draw'
+import { stepNumbersOf } from '../hooks/git'
 import { layoutStepper, stepperOf, stepperRow } from '../hooks/stepper'
 import type { Stepper } from '../hooks/stepper'
 import { lastOf, STEPS, tableFor } from '../hooks/tables'
@@ -208,6 +209,14 @@ describe('step history', () => {
   })
 })
 
+describe('step lines of a block', () => {
+  test('every step line is read, in the order printed', () => {
+    expect(stepNumbersOf('**▸ 1/7 · Triage the size** · standard\n\n**▸ 2/7 · Reproduce first**')).toEqual([1, 2])
+    expect(stepNumbersOf('**laa:fix** · standard\n\n**▸ 3/7 · Investigate** · 5 angles')).toEqual([3])
+    expect(stepNumbersOf('**★ Approve the plan?** · 4 slices')).toEqual([])
+  })
+})
+
 describe('width ladder', () => {
   const at3 = stepperOf({ run: fixRun(3, { seen: [0, 1, 2, 3] }), paused: null })
 
@@ -351,6 +360,16 @@ describe('stepper row', () => {
         </Box>
       </Box>
     `))
+  })
+
+  test('steps printed in one block are each done, not skipped', async ($, on) => {
+    await world($, on)
+    await $.skill.prompt(skill('fix'))
+    await $.session.append(reply('**▸ 0/7 · Load context**', 'row-1'))
+    await $.session.append(reply('**▸ 1/7 · Triage the size** · standard\n\n**▸ 2/7 · Reproduce first** · test-engineer', 'row-2'))
+    const text = '✓ context ━ ✓ size ━ ● repro ━ ○ investigate ━ ○ decide ━ ○ fix ━ ○ review ━ ○ retro'
+    expect(cellsOf((await band($, 'terminal')).row2).text).toBe(text)
+    expect(textForm((await band($, 'desktop')).row2).text).toBe(text)
   })
 
   test("a resume run printing feature's steps draws feature's stepper", async ($, on) => {
