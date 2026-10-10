@@ -299,11 +299,12 @@ async function finishEngine($: Engine, text: string, was: string | null) {
   if (settle(cards) !== cards) await update($, engines, settle)
 }
 
-// At a turn's end, while its run is still set: keep the run's footer tag under the turn's duration, so the
-// turn's closing line can carry it.
+// At a turn's end: keep the run's footer tag under the turn's duration, so the turn's closing line can carry
+// it. A turn with no run set is kept too, with no tag, so its line can't take the tag of a turn of nearly
+// the same duration.
 async function tagTurn($: Engine, ms: number) {
   const r = await read($, run)
-  if (r) await update($, turnTags, tags => [...tags, { ms, tag: runTag(r) }].slice(-MAX_TURN_TAGS))
+  await update($, turnTags, tags => [...tags, { ms, tag: r ? runTag(r) : null }].slice(-MAX_TURN_TAGS))
 }
 
 // The person picked a filter in a pane.

@@ -22,6 +22,16 @@ export const spinnerText = (r: Run, phase: string | null) => {
 // What the prompt hint adds while a gate waits on the person.
 export const gateText = (r: Run) => `★ waiting on you: ${r.gate ?? ''}`
 
-// The tag of the turn that took exactly `ms`, newest first; null when no tagged turn did.
-export const turnTagFor = (tags: readonly TurnTag[], ms: number): string | null =>
-  tags.findLast(t => t.ms === ms)?.tag ?? null
+// How far a turn line's duration may be from the one its turn ended with and still be that turn's.
+const TURN_SLACK_MS = 50
+
+// The tag of the turn whose duration is nearest `ms`, the newest on a tie; null when none is within 50 ms,
+// or when that turn belonged to no run.
+export const turnTagFor = (tags: readonly TurnTag[], ms: number): string | null => {
+  let best: TurnTag | null = null
+  for (const t of tags) {
+    const off = Math.abs(t.ms - ms)
+    if (off <= TURN_SLACK_MS && (!best || off <= Math.abs(best.ms - ms))) best = t
+  }
+  return best?.tag ?? null
+}

@@ -175,9 +175,9 @@ describe('run history', () => {
     await $.tool.call(wfCall('laa:design-panel'))
     await $.turn.complete({ ...turnEnd('**★ Approve the plan?** · 4 slices'), durationMs: 4321 })
     await $.session.append(reply(CLOSING, 'row-2'))
-    // The closing turn's run is over by its end: it gets no tag.
+    // The closing turn's run is over by its end: it is kept with no tag, so it borrows no neighbour's.
     await $.turn.complete({ ...turnEnd(CLOSING), durationMs: 900 })
-    expect(state.turnTags).toEqual([{ ms: 4321, tag: 'laa:feature ★' }])
+    expect(state.turnTags).toEqual([{ ms: 4321, tag: 'laa:feature ★' }, { ms: 900, tag: null }])
     expect(state.closings).toHaveLength(1)
 
     await $.session.end({ reason: 'clear', sessionId: 's1', resume: {} as never })

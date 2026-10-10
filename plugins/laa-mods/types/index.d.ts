@@ -107,7 +107,8 @@ export type EngineRun = {
 }
 
 // The footer tag of a run as it stood when a turn ended, by the turn's duration, so that turn's closing line can carry it.
-export type TurnTag = { ms: number; tag: string }
+// `tag` is null for a turn that ended with no run set: its line stays the engine's own.
+export type TurnTag = { ms: number; tag: string | null }
 
 // What each pane's filter is set to; `all` shows everything.
 export type Filters = { findings: string; learnings: string }

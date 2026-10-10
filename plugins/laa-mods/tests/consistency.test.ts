@@ -142,9 +142,10 @@ describe('a fix run at step 3 of 7', () => {
     expect(await spinner($, handed)).toBe('laa:fix · Investigate 3/7')
     expect(await spinner($, handed, 'desktop')).toBe('laa:fix · Investigate 3/7')
 
-    // The turn ends while the run stands at the step: its closing line carries the footer's own tag.
+    // The turn ends while the run stands at the step: its closing line carries the footer's own tag, though
+    // the line's duration is a few milliseconds off the turn's.
     await $.turn.complete({ ...turnEnd(STEP_3), durationMs: 4321 })
-    expect(show(await turnLine($, 4321))).toBe(golden(`
+    expect(show(await turnLine($, 4324))).toBe(golden(`
       <Box key="laa-turn">
         <Box key="engine" />
         <Text dimColor>" · " "laa:fix 3/7"</Text>

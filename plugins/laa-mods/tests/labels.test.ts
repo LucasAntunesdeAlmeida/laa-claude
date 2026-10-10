@@ -25,6 +25,8 @@ async function world($: Engine, on: On) {
   return { clock, handed }
 }
 
+const CLOSING = '**✓ Shipped** · export\n\n**Next**\n- `/laa:retro`: capture what we learned'
+
 const run = { skill: 'fix', step: null, gate: null, engine: null }
 const step = { n: 3, last: 7, title: 'Investigate' }
 
@@ -47,12 +49,27 @@ describe('run labels', () => {
     expect(gateText({ ...run, gate: 'Approve the plan?' })).toBe('★ waiting on you: Approve the plan?')
   })
 
-  test("a turn's tag is found by its exact duration, the newest first", () => {
+  test("a turn's tag is found by the nearest duration within 50 ms, the newest on a tie", () => {
     const tags = [{ ms: 4321, tag: 'laa:fix 3/7' }, { ms: 900, tag: 'laa:fix 4/7' }, { ms: 4321, tag: 'laa:fix 5/7' }]
     expect(turnTagFor(tags, 4321)).toBe('laa:fix 5/7')
     expect(turnTagFor(tags, 900)).toBe('laa:fix 4/7')
-    expect(turnTagFor(tags, 4320)).toBeNull()
+    // The line's duration may be a few milliseconds off the one the turn ended with.
+    expect(turnTagFor(tags, 4320)).toBe('laa:fix 5/7')
+    expect(turnTagFor(tags, 4322)).toBe('laa:fix 5/7')
+    expect(turnTagFor(tags, 4371)).toBe('laa:fix 5/7')
+    expect(turnTagFor(tags, 4372)).toBeNull()
+    expect(turnTagFor(tags, 4400)).toBeNull()
     expect(turnTagFor([], 4321)).toBeNull()
+  })
+
+  test('a turn outside any run keeps its own empty tag beside a tagged neighbour', () => {
+    const tags = [{ ms: 4321, tag: 'laa:fix 3/7' }, { ms: 4324, tag: null }]
+    expect(turnTagFor(tags, 4324)).toBeNull()
+    expect(turnTagFor(tags, 4323)).toBeNull()
+    expect(turnTagFor(tags, 4322)).toBe('laa:fix 3/7')
+    // Equally near both: the newer turn's.
+    expect(turnTagFor([{ ms: 4320, tag: 'laa:fix 3/7' }, { ms: 4324, tag: null }], 4322)).toBeNull()
+    expect(turnTagFor([{ ms: 4320, tag: null }, { ms: 4324, tag: 'laa:fix 3/7' }], 4322)).toBe('laa:fix 3/7')
   })
 })
 
@@ -202,11 +219,34 @@ describe('turn duration', () => {
     ].join('\n'))
     await own.unmount()
 
-    for (const durationMs of [4320, 4322, 1000]) {
+    // The line's own duration can differ from the turn's by a few milliseconds: it is still that turn's line.
+    for (const durationMs of [4320, 4322]) {
+      const near = await $.ui.mount({ ...TURN, props: { ...TURN.props, durationMs }, surface: 'terminal' })
+      expect(show(await near.drawn()), `${durationMs} ms`).toContain('"laa:feature ★"')
+      await near.unmount()
+    }
+    for (const durationMs of [4400, 1000]) {
       const other = await $.ui.mount({ ...TURN, props: { ...TURN.props, durationMs }, surface: 'terminal' })
       expect(show(await other.drawn()), `${durationMs} ms`).toBe(ENGINE_OWN)
       await other.unmount()
     }
+  })
+
+  test("a turn outside any run, a few milliseconds from a run's turn, keeps the engine's own line", async ($, on) => {
+    await world($, on)
+    await $.skill.prompt(skill('feature'))
+    await $.session.append(reply('**▸ 5/8 · Plan slices** · 4 slices'))
+    await $.turn.complete({ ...turnEnd('**★ Approve the plan?** · 4 slices'), durationMs: 4321 })
+    await $.session.append(reply(CLOSING, 'row-2'))
+    await $.turn.complete({ ...turnEnd(CLOSING), durationMs: 900 })
+    // No run is set any more: this turn is nobody's, 3 ms from the tagged one.
+    await $.turn.complete({ ...turnEnd('Done.'), durationMs: 4324 })
+    const plain = await $.ui.mount({ ...TURN, props: { ...TURN.props, durationMs: 4324 }, surface: 'terminal' })
+    expect(show(await plain.drawn())).toBe(ENGINE_OWN)
+    await plain.unmount()
+    const tagged = await $.ui.mount({ ...TURN, props: { ...TURN.props, durationMs: 4321 }, surface: 'terminal' })
+    expect(show(await tagged.drawn())).toContain('"laa:feature ★"')
+    await tagged.unmount()
   })
 
   test('leaves the line of a turn outside any run alone', async ($, on) => {
