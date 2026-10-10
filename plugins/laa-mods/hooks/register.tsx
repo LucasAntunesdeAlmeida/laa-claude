@@ -221,8 +221,9 @@ async function refresh($: Engine) {
 // What a block of laa output says about the run: a mode line starts one, steps and gates move it,
 // and the closing report (a status line, then its Next list) ends it. A step line after the run
 // was dropped picks the pipeline back up, with no record of the steps before it.
-// `closingText` is the block itself under `visuals: full`: when it closes a run, its status line is
-// recorded, which is how the report card knows the block as laa's.
+// `closingText` is the block itself under `visuals: full`: when it closes a run, its key (the status line
+// plus a hash of what stands under it) is recorded, which is how the report card knows the block as laa's
+// and which ✗ report is the newest.
 async function applyProgress($: Engine, p: Progress, closingText?: string) {
   if (!p.skill && !p.step && !p.gate && !p.isClosing) return
   const p0 = await read($, pipeline)
@@ -478,6 +479,7 @@ const helpStateOf = (text: string) => ({
   suggested: /^\*\*Suggested\*\* `([^`]+)`: (.+)$/m.exec(text),
 })
 
+// A finding's tag color in the 0.3.0 pane, which `visuals: minimal` keeps; the full pane picks its own (never red).
 const tagColor = (tag: string) => (tag === 'CRIT' || tag === 'HIGH' ? C.danger : tag === 'MED' ? C.warning : undefined)
 
 export const register: Register = (on, options) => {

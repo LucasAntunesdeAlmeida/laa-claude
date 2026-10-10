@@ -98,7 +98,7 @@ export type FindingsActs = {
 // What the learnings pane is drawn from.
 export type LearningsInput = {
   list: Learnings
-  // `all`, `local`, or `generic`; anything else counts as `all`.
+  // `all`, `local`, `generic`, or `other` (offered only when a learning names neither); anything else counts as `all`.
   filter: string
   columns: number
 }

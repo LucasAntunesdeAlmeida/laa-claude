@@ -9,10 +9,10 @@ import type { Fake } from './fake'
 // Every tree here was captured from 0.3.0 before the visuals work began; a change to one is a change to
 // what `visuals: minimal` promises to keep.
 //
-// Each group runs under `visuals: minimal`, where it must hold for good. The groups named in STUBBED also
-// run under `visuals: full`, which draws the same while the drawing a group covers is still a stub: the slice
-// that starts drawing it takes its name out of the list and pins the new drawing in its own test file.
-const STUBBED = ['0.3.0 footer']
+// Each group runs under `visuals: minimal`, where it must hold for good. The groups named in SAME_IN_FULL
+// also run under `visuals: full`, which draws them the same for good: the footer label is 0.3.0's in both
+// modes. What `visuals: full` draws for every other group is pinned in that drawing's own test file.
+const SAME_IN_FULL = ['0.3.0 footer']
 
 const MODES = [
   { name: 'minimal', options: { visuals: 'minimal' } },
@@ -25,7 +25,7 @@ let mode: (typeof MODES)[number] = MODES[0]
 // with that mode as the plugin's setting. A group's body runs while it is declared, so `mode` is the group's.
 const describe = (name: string, body: () => void) => {
   for (const m of MODES) {
-    if (m.name === 'full' && !STUBBED.includes(name)) continue
+    if (m.name === 'full' && !SAME_IN_FULL.includes(name)) continue
     mode = m
     group(`${name} · visuals: ${m.name}`, body)
   }
