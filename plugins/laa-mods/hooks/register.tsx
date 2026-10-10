@@ -244,7 +244,7 @@ async function applyProgress($: Engine, p: Progress, closingText?: string) {
   })
   if (closingText === undefined || !p.isClosing || !hadRun) return
   const closing = closingOf(closingText)
-  if (closing) await update($, closings, was => (was.at(-1) === closing.statusRaw ? was : [...was, closing.statusRaw].slice(-MAX_CLOSINGS)))
+  if (closing) await update($, closings, was => (was.at(-1) === closing.key ? was : [...was, closing.key].slice(-MAX_CLOSINGS)))
 }
 
 // The person's theme by name, for the Raster colors; null when it can't be read. Runs in the background
@@ -821,7 +821,7 @@ export const register: Register = (on, options) => {
             // At most one red item on screen: the blocked branch in the band wins, then the newest ✗ report.
             const [s, allowed] = await Promise.all([read($, status), read($, allowMain)])
             const isBandRed = Boolean(s?.branch && s.isDefault && !allowed)
-            tone = closing.statusRaw === recorded.at(-1) && !isBandRed ? C.danger : C.warning
+            tone = closing.key === recorded.at(-1) && !isBandRed ? C.danger : C.warning
           }
           card = reportCard($.ui.resolve(e), closing, tone)
         }
