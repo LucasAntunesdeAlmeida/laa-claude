@@ -1,11 +1,16 @@
 // Pure drawing helpers: the theme's colors, the glyphs laa draws with, and the one place a Raster's cells
 // are checked and packed. Nothing here calls the engine.
 
-import type { Elements } from 'claude-code'
+import type { Elements, RenderElement } from 'claude-code'
 
 // The element table of whichever surface a hook draws on, as `$.ui.resolve(e)` answers it: what the
-// pure drawing files take as `els`. An element only some surfaces have is checked with `'Raster' in els`.
+// pure drawing files take as `els`. `'Raster' in els` does not say the surface draws one (see `isBuilt`).
 export type Els = Elements[keyof Elements]
+
+// Whether a surface's table built the element asked of it. Every surface's table holds every constructor;
+// one the surface does not draw answers an empty Box in its place, so `'Raster' in els` or `'Select' in els`
+// alone says nothing: a Raster or a Select is built, then kept only when this says it is one.
+export const isBuilt = (el: RenderElement | null, type: string) => (el as { type?: unknown } | null)?.type === type
 
 // The theme's semantic colors, so laa's marks follow the person's theme, colorblind themes included.
 export const C = { danger: 'error', warning: 'warning', action: 'suggestion', gate: 'permission', success: 'success' } as const

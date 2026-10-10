@@ -4,7 +4,7 @@
 import type { RenderElement } from 'claude-code'
 
 import type { Finding, Findings, Learning, Learnings } from '../types'
-import { barOf, C, rasterOf, wordsOf } from './draw'
+import { barOf, C, isBuilt, rasterOf, wordsOf } from './draw'
 import type { Els } from './draw'
 import { resolveFrom, slash } from './git'
 
@@ -134,10 +134,6 @@ const partsOf = <T,>(shades: readonly { name: string; glyph: string }[], entries
 // A bar's legend, every part named with its count: `█ CRIT 0 · ▓ HIGH 1 · ▒ MED 1 · ░ LOW 0`.
 const legendOf = (parts: readonly Part[]) => parts.map(p => `${p.glyph} ${p.name} ${p.count}`).join(' · ')
 
-// Whether a surface's table built the element asked of it. Every surface's table holds every constructor;
-// one the surface does not draw answers an empty Box in its place, so `'Select' in els` alone says nothing.
-const isBuilt = (el: RenderElement, type: string) => (el as { type?: unknown } | null)?.type === type
-
 // The parts as one Raster row in the terminal's own color, at most 40 cells and two short of the pane's
 // width. null where the surface draws no Raster, nothing counts, there is no room, or `rasterOf` refuses
 // the cells: the legend under it says the same in Text.
@@ -157,7 +153,7 @@ const barRow = (els: Els, key: string, parts: readonly Part[], columns: number):
 }
 
 // A pane's filter as a Select, or null where there is none to offer: three entries or fewer, or a surface
-// that draws no Select (mobile). Where it is null the pane shows every entry, whatever the filter was left at.
+// that draws no Select (mobile, whose table builds an empty Box for one). Where it is null the pane shows every entry, whatever the filter was left at.
 const filterRow = (
   els: Els,
   key: string,
@@ -174,7 +170,7 @@ const filterRow = (
 
 // The findings pane under `visuals: full`, top to bottom: the repo (dim); on the terminal a Raster bar by
 // severity (█ CRIT ▓ HIGH ▒ MED ░ LOW); on every surface its legend as Text; `<Select key="severity">` when
-// there are more than 3 findings and the surface has a Select; then each finding the filter shows: its tag
+// there are more than 3 findings and the surface draws a Select; then each finding the filter shows: its tag
 // (bold, `warning` for CRIT and HIGH, never `error`), a Link to the file labelled with the location (dim
 // Text when `fileHref` gives none), the title, the code around it when `list.snippets` holds it, `→ fix`,
 // and the Buttons `fix{index}` and `dismiss{index}`; last, `fixHigh` (hotkey f) over every CRIT and HIGH

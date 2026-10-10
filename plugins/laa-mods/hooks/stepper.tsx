@@ -4,7 +4,7 @@
 import type { RenderElement } from 'claude-code'
 
 import type { Journal, Run } from '../types'
-import { C, paletteOf, rasterOf, wordsOf } from './draw'
+import { C, isBuilt, paletteOf, rasterOf, wordsOf } from './draw'
 import type { Els, Span } from './draw'
 import { STEPS, tableFor } from './tables'
 
@@ -128,8 +128,8 @@ export const layoutStepper = (stepper: Stepper, columns: number, palette: { mute
   return parts && spansOf(parts, palette)
 }
 
-// The band's second row, keyed `laa-steps`: on the terminal one `<Raster>` (only when `'Raster' in els`,
-// `rasterOf` takes the cells, and what the table builds is a Raster; a throw while building it draws the Text
+// The band's second row, keyed `laa-steps`: on the terminal one `<Raster>` (only when `rasterOf` takes the
+// cells and what the table builds is a Raster, by `isBuilt`; a throw while building it draws the Text
 // form), elsewhere a `<Box>` of dim Text around the current step. Returns null for "no second row", and
 // register.tsx draws the 0.3.0 band alone: no run and no paused journal, `maxRows` under 2, no table fits, or
 // under 12 columns. When it returns a row, register.tsx draws
@@ -146,7 +146,7 @@ export const stepperRow = (els: Els, input: StepperInput): RenderElement | null 
       const raster = rasterOf(words.length / 3, 1, words)
       const drawn: RenderElement | null = raster && <Raster key="laa-steps" columns={raster.columns} rows={raster.rows} cells={raster.cells} />
       // Off the terminal the table still carries a `Raster`, one that draws nothing: only a real one is kept.
-      if (drawn && typeof drawn === 'object' && 'type' in drawn && drawn.type === 'Raster') return drawn
+      if (isBuilt(drawn, 'Raster')) return drawn
     } catch {
       // The Text form below draws instead.
     }
