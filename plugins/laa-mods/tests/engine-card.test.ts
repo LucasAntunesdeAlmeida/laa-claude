@@ -428,7 +428,7 @@ describe('engine card', () => {
   test('a notification that starts its own turn, as a real session delivers one, settles the card', async ($, on) => {
     const { clock } = await world($, on)
     await launch($, clock, ['investigate:logs', 'cluster', 'verify:1:logic'])
-    await $.session.append({ ...notification(LIVE_SHAPED), door: 'prompt', origin: { kind: 'task-notification' } as never })
+    await $.session.append({ ...notification(LIVE_SHAPED), door: 'prompt' as const, origin: { kind: 'task-notification' as const } })
     expect(linesOf(await drawnOn($, 'terminal'))).toEqual([
       'investigate · laa engine · 3 agents',
       '✓ Investigate ━ ✓ Cluster ━ ✓ Verify',

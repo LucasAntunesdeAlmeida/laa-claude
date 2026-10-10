@@ -224,7 +224,7 @@ export const notification = (body = WF_DONE, uuid = 'row-n1') => ({
     content: [{ type: 'text' as const, text: `<task-notification>\n${body}\n</task-notification>` }],
   },
   door: 'delivery' as const,
-  origin: { kind: 'engine' } as never,
+  origin: { kind: 'engine' as const },
   uuid,
 })
 

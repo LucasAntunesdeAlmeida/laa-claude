@@ -650,7 +650,7 @@ export const register: Register = (on, options) => {
       if (e.door === 'response' && e.message.type === 'assistant') {
         const text = textOf(e.message.content)
         await applyProgress($, text, isFull)
-      } else if (e.door === 'delivery' || (e.origin as { kind?: string }).kind === 'task-notification') {
+      } else if (e.door === 'delivery' || e.origin.kind === 'task-notification') {
         const was = isFull ? (await read($, run))?.engine ?? null : null
         // A background task finished (a workflow's notification, folded into a turn or starting its own).
         await update($, run, r => (r?.engine ? { ...r, engine: null } : r))
