@@ -61,11 +61,12 @@ export const launched = (card: EngineRun, result: unknown): EngineRun => {
   return taskId === card.taskId && runId === card.runId ? card : { ...card, taskId, runId }
 }
 
-// Which card a spawn belongs to, by its id in `cards`: the Workflow call's, else the run's, else the only
-// engine still running, unless that one is known to be another run; null when none of those names one,
-// and the spawn is ignored.
+// Which card a spawn belongs to, by its id in `cards`: the Workflow call's when the spawn names one (a
+// whole run shares it, so a call that has no card is another workflow's and the spawn is ignored); else,
+// on a resumed run that names no call, the run's, else the only engine still running, unless that one is
+// known to be another run. null when none of those names one.
 export const cardFor = (cards: Cards, spawn: Pick<Spawn, 'toolUseId' | 'runId'>): string | null => {
-  if (spawn.toolUseId && cards[spawn.toolUseId]) return spawn.toolUseId
+  if (spawn.toolUseId) return cards[spawn.toolUseId] ? spawn.toolUseId : null
   const byRun = spawn.runId ? Object.keys(cards).find(id => cards[id]?.runId === spawn.runId) : undefined
   if (byRun) return byRun
   const live = running(cards)
@@ -77,6 +78,7 @@ export const cardFor = (cards: Cards, spawn: Pick<Spawn, 'toolUseId' | 'runId'>)
 
 // The cards after a batch of spawns: each counted on its card, under its role when it has one. One pass
 // for the whole batch, so register.tsx writes the state once however many agents a phase starts.
+// A card learns its run only from a spawn that names its Workflow call, never from a guessed match.
 export const spawned = (cards: Cards, spawns: readonly Spawn[]): Cards => {
   let next: Record<string, EngineRun> | null = null
   for (const spawn of spawns) {
@@ -87,7 +89,7 @@ export const spawned = (cards: Cards, spawns: readonly Spawn[]): Cards => {
     next = next ?? { ...cards }
     next[id] = {
       ...card,
-      runId: card.runId ?? (spawn.runId || null),
+      runId: card.runId ?? (spawn.toolUseId === id && spawn.runId ? spawn.runId : null),
       count: card.count + 1,
       roles: hasRoom ? { ...card.roles, [spawn.role]: (card.roles[spawn.role] ?? 0) + 1 } : card.roles,
     }
@@ -137,19 +139,26 @@ const stateOf = (status: string | null): EngineRun['state'] => {
   return 'done'
 }
 
-// The cards after a notification: its card (by the Workflow call's id, else the task's, else the only engine
-// still running when the notification carries a report) takes the report and the way the task ended.
-// null when the notification is no card's, and register.tsx falls back to `ended`.
+// The cards after a notification: its card takes the report and the way the task ended. The card is the
+// one the notification names (by the Workflow call's id, else the task's), which may still settle a card
+// marked `ended` on a guess; only `done` and `failed` are final. A notification that names another task
+// (a call that has no card, or a task while every running card knows its own) changes nothing. One that
+// names nobody and carries a report settles the only engine still running.
+// null when the notification is no card's and names nobody, and register.tsx falls back to `ended`.
 export const finished = (cards: Cards, notice: Notice): Cards | null => {
   const live = running(cards)
-  const id =
+  const named =
     (notice.toolUseId && cards[notice.toolUseId] ? notice.toolUseId : undefined) ??
-    (notice.taskId ? Object.keys(cards).find(k => cards[k]?.taskId === notice.taskId) : undefined) ??
-    (notice.report && live.length === 1 ? live[0] : undefined)
+    (notice.taskId ? Object.keys(cards).find(k => cards[k]?.taskId === notice.taskId) : undefined)
+  const isOthers = !named && (Boolean(notice.toolUseId) || (Boolean(notice.taskId) && live.every(k => cards[k]?.taskId != null)))
+  if (isOthers) return cards
+  const id = named ?? (notice.report && live.length === 1 ? live[0] : undefined)
   const card = id ? cards[id] : undefined
   if (!id || !card) return null
-  if (card.state !== 'running') return cards
-  return { ...cards, [id]: { ...card, state: stateOf(notice.status), result: notice.report, status: notice.status } }
+  if (card.state === 'done' || card.state === 'failed') return cards
+  const state = stateOf(notice.status)
+  if (card.state === state && card.result === notice.report && card.status === notice.status) return cards
+  return { ...cards, [id]: { ...card, state, result: notice.report, status: notice.status } }
 }
 
 // The cards after a notification that named no card while the engine `name` was the one running: every

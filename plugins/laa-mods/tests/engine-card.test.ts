@@ -15,20 +15,25 @@ const MINIMAL = { options: { visuals: 'minimal' } }
 const ENGINE_OWN = '<Box key="engine" />'
 
 // A repo on a task branch with the engine's own row beneath the plugin, a clock to move, and how many
-// times the plugin wrote each of its state values.
+// times the plugin wrote each of its state values, and read each.
 async function world($: Engine, on: On, f: Fake = {}) {
   fakeRepo(on, { branch: 'fix/invoice-500', mapAge: 1, results: { Workflow: WF_LAUNCHED }, ...f })
   const clock = mock.clock(on)
   const writes: Record<string, number> = {}
+  const reads: Record<string, number> = {}
   on('state.set', ($, e, next) => {
     writes[e.key] = (writes[e.key] ?? 0) + 1
+    return next(e)
+  })
+  on('state.get', ($, e, next) => {
+    reads[e.key] = (reads[e.key] ?? 0) + 1
     return next(e)
   })
   on('ui.render', ($, e) => $.ui.resolve(e).Box({ key: 'engine' }))
   on('skill.prompt', ($, e) => ({ text: e.text }))
   on('agent.spawn', () => ({ model: 'claude-test', agentId: 'agent_test1' }))
   await $.tool.call(bash('git status'))
-  return { clock, writes }
+  return { clock, writes, reads }
 }
 
 // A Workflow call's row in the transcript, as the engine raises it.
@@ -127,7 +132,7 @@ const cardOf = (cards: Readonly<Record<string, EngineRun>>, id = WF.toolUseId) =
 describe('which card a spawn counts on', () => {
   test('a spawn that arrives before the launch is attached is counted, and the launch keeps the count', () => {
     expect(cardOf(fresh)).toMatchObject({ taskId: null, runId: null, count: 0 })
-    const early = spawned(fresh, [{ toolUseId: '', runId: WF.runId, role: 'investigate' }])
+    const early = spawned(fresh, [{ toolUseId: WF.toolUseId, runId: WF.runId, role: 'investigate' }])
     expect(cardOf(early)).toMatchObject({ runId: WF.runId, roles: { investigate: 1 }, count: 1 })
     const attached = launched(cardOf(early), WF_LAUNCHED)
     expect(attached).toMatchObject({ taskId: WF.taskId, runId: WF.runId, roles: { investigate: 1 }, count: 1 })
@@ -136,12 +141,22 @@ describe('which card a spawn counts on', () => {
     expect(launched(attached, WF_LAUNCHED)).toBe(attached)
   })
 
+  test('a card learns its run only from a spawn that names its Workflow call', () => {
+    // A spawn that names no call is counted on the only running engine, but its run is a guess.
+    const guessed = spawned(fresh, [{ toolUseId: '', runId: 'wf_test9', role: 'investigate' }])
+    expect(cardOf(guessed)).toMatchObject({ runId: null, roles: { investigate: 1 }, count: 1 })
+    const named = spawned(guessed, [{ toolUseId: WF.toolUseId, runId: WF.runId, role: 'verify' }])
+    expect(cardOf(named)).toMatchObject({ runId: WF.runId, roles: { investigate: 1, verify: 1 }, count: 2 })
+  })
+
   test('by the Workflow call, then by the run, then the only engine still running', () => {
     const one = { ...fresh, [WF.toolUseId]: launched(cardOf(fresh), WF_LAUNCHED) }
     const two = startCard(one, 'toolu_test2', 'review-panel')
     const both = { ...two, toolu_test2: launched(cardOf(two, 'toolu_test2'), { taskId: 'task_test2', runId: 'wf_test2' }) }
     expect(cardFor(both, { toolUseId: 'toolu_test2', runId: WF.runId })).toBe('toolu_test2')
-    expect(cardFor(both, { toolUseId: 'toolu_test9', runId: WF.runId })).toBe(WF.toolUseId)
+    // A call that has no card is another workflow's, whatever else the spawn names.
+    expect(cardFor(both, { toolUseId: 'toolu_test9', runId: WF.runId })).toBeNull()
+    expect(cardFor(both, { toolUseId: '', runId: WF.runId })).toBe(WF.toolUseId)
     expect(cardFor(both, { toolUseId: '', runId: 'wf_test2' })).toBe('toolu_test2')
     // Two engines running and nothing that names one: the spawn is nobody's.
     expect(cardFor(both, { toolUseId: '', runId: '' })).toBeNull()
@@ -149,7 +164,8 @@ describe('which card a spawn counts on', () => {
 
     const done = finished(both, noticeOf(WF_DONE)) ?? both
     expect(cardFor(done, { toolUseId: '', runId: '' })).toBe('toolu_test2')
-    expect(cardFor(done, { toolUseId: 'toolu_test9', runId: '' })).toBe('toolu_test2')
+    expect(cardFor(done, { toolUseId: 'toolu_test9', runId: '' })).toBeNull()
+    expect(spawned(done, [{ toolUseId: 'toolu_test9', runId: '', role: 'verify' }])).toBe(done)
     // The only running engine is known to be another run: not its spawn.
     expect(cardFor(done, { toolUseId: '', runId: 'wf_test9' })).toBeNull()
     expect(cardFor({}, { toolUseId: WF.toolUseId, runId: WF.runId })).toBeNull()
@@ -165,7 +181,107 @@ describe('which card a spawn counts on', () => {
   })
 })
 
+// Two engines launched and both still running.
+const pair = () => {
+  const one = { ...fresh, [WF.toolUseId]: launched(cardOf(fresh), WF_LAUNCHED) }
+  const two = startCard(one, 'toolu_test2', 'review-panel')
+  return { ...two, toolu_test2: launched(cardOf(two, 'toolu_test2'), { taskId: 'task_test2', runId: 'wf_test2' }) }
+}
+
+const REPORT_ONLY = '<status>completed</status>\n<result>\n**✓ nothing to fix** · 3 reviewers\n</result>'
+const STRAY = '<task-id>task_bg7</task-id>\n<tool-use-id>toolu_bg7</tool-use-id>\n<status>completed</status>'
+const STRAY_REPORT = `${STRAY}\n<result>\n**✓ nightly export finished** · 4 files\n</result>`
+
+describe('which card a notification settles', () => {
+  test('one that names nobody and carries a report settles the only engine still running', () => {
+    const one = { ...fresh, [WF.toolUseId]: launched(cardOf(fresh), WF_LAUNCHED) }
+    const settled = finished(one, noticeOf(REPORT_ONLY))
+    expect(cardOf(settled ?? {})).toMatchObject({ state: 'done', status: 'completed', result: '✓ nothing to fix · 3 reviewers' })
+    // With no report it is nobody's, and with two engines running there is no only one.
+    expect(finished(one, noticeOf('<status>completed</status>'))).toBeNull()
+    expect(finished(pair(), noticeOf(REPORT_ONLY))).toBeNull()
+    expect(finished({}, noticeOf(REPORT_ONLY))).toBeNull()
+  })
+
+  test("another task's notification changes nothing, with a report or without", () => {
+    const one = { ...fresh, [WF.toolUseId]: launched(cardOf(fresh), WF_LAUNCHED) }
+    expect(finished(one, noticeOf(STRAY))).toBe(one)
+    expect(finished(one, noticeOf(STRAY_REPORT))).toBe(one)
+    // By its task alone, while every running engine knows its own task.
+    expect(finished(one, noticeOf('<task-id>task_bg7</task-id>\n<status>completed</status>'))).toBe(one)
+    expect(finished(one, noticeOf(STRAY_REPORT.replace('<tool-use-id>toolu_bg7</tool-use-id>\n', '')))).toBe(one)
+    expect(finished(pair(), noticeOf(STRAY_REPORT))).toEqual(pair())
+    // An engine whose launch has not answered yet may be the task a report names.
+    const settled = finished(fresh, noticeOf(STRAY_REPORT.replace('<tool-use-id>toolu_bg7</tool-use-id>\n', '')))
+    expect(cardOf(settled ?? {})).toMatchObject({ state: 'done', result: '✓ nightly export finished · 4 files' })
+  })
+
+  test('a card ended on a guess still takes its own notification; a done or failed one is final', () => {
+    const one = { ...fresh, [WF.toolUseId]: { ...launched(cardOf(fresh), WF_LAUNCHED), state: 'ended' as const } }
+    const settled = finished(one, noticeOf(WF_DONE)) ?? {}
+    expect(cardOf(settled)).toMatchObject({ state: 'done', status: 'completed', result: WF_REPORT })
+    expect(finished(settled, noticeOf(WF_DONE))).toBe(settled)
+    expect(finished(settled, noticeOf(`<task-id>${WF.taskId}</task-id>\n<status>failed</status>`))).toBe(settled)
+    const failed = finished(one, noticeOf(`<task-id>${WF.taskId}</task-id>\n<status>failed</status>`)) ?? {}
+    expect(cardOf(failed)).toMatchObject({ state: 'failed', result: null })
+    expect(finished(failed, noticeOf(WF_DONE))).toBe(failed)
+    // The same stop told twice changes nothing the second time.
+    const stopped = finished(one, noticeOf(`<task-id>${WF.taskId}</task-id>\n<status>killed</status>`)) ?? {}
+    expect(cardOf(stopped)).toMatchObject({ state: 'ended', status: 'killed' })
+    expect(finished(stopped, noticeOf(`<task-id>${WF.taskId}</task-id>\n<status>killed</status>`))).toBe(stopped)
+  })
+
+  test('keeps the newest 20 cards', () => {
+    let cards: Readonly<Record<string, EngineRun>> = {}
+    for (let i = 1; i <= 23; i += 1) cards = startCard(cards, `toolu_test${i}`, 'investigate')
+    expect(Object.keys(cards)).toHaveLength(20)
+    expect(Object.keys(cards)).toEqual(Array.from({ length: 20 }, (_, i) => `toolu_test${i + 4}`))
+    expect(cardOf(cards, 'toolu_test23').seq).toBe(23)
+    // A call that already has a card keeps it.
+    expect(startCard(cards, 'toolu_test23', 'review-panel')).toBe(cards)
+  })
+})
+
 describe('engine card', () => {
+  test("another task's notification leaves a running engine's card running, and its own report still lands", async ($, on) => {
+    const { clock } = await world($, on)
+    await $.skill.prompt({ skill: 'laa:fix', text: '# /laa:fix\n\nBug: something\n' })
+    await launch($, clock, ['investigate:logs'])
+    const running = ['investigate · laa engine · 1 agent', '● Investigate ━ ○ Cluster ━ ○ Verify', 'investigate']
+    await $.session.append(notification(STRAY, 'row-n2'))
+    expect(linesOf(await drawnOn($, 'terminal'))).toEqual(running)
+    await $.session.append(notification(STRAY_REPORT, 'row-n3'))
+    expect(linesOf(await drawnOn($, 'terminal'))).toEqual(running)
+    await $.session.append(notification())
+    expect(linesOf(await drawnOn($, 'terminal'))).toEqual(['investigate · laa engine · 1 agent', '✓ Investigate ━ Cluster ━ Verify', 'investigate', WF_REPORT])
+  })
+
+  test('a card ended by a notification that named nobody takes its own report when it comes', async ($, on) => {
+    const { clock } = await world($, on)
+    await $.skill.prompt({ skill: 'laa:fix', text: '# /laa:fix\n\nBug: something\n' })
+    await launch($, clock, ['investigate:logs'])
+    await $.session.append(notification('task t9 completed', 'row-n2'))
+    expect(linesOf(await drawnOn($, 'terminal')).at(-1)).toBe('ended · no report')
+    await $.session.append(notification())
+    expect(linesOf(await drawnOn($, 'terminal')).at(-1)).toBe(WF_REPORT)
+  })
+
+  test("the design panel's deep-dive specialists count in its last phase", async ($, on) => {
+    const { clock } = await world($, on)
+    await $.tool.call(wfCall('laa:design-panel'))
+    const labels = ['architect:1', 'architect:2', 'judge:1', 'synthesize', 'dataModel', 'api', 'threatModel', 'scaleRisks', 'infra']
+    for (const [i, label] of labels.entries()) await $.agent.spawn(spawnWf(label, { agentIndex: i + 1 }))
+    await clock.advance(200)
+    const panel = row('laa:design-panel')
+    expect(linesOf(await drawnOn($, 'terminal', panel))).toEqual([
+      'design-panel · laa engine · 9 agents',
+      '✓ Propose ━ ✓ Judge ━ ✓ Synthesize ━ ● Deep-dive',
+      'architect ×2 · judge · synthesize · data · api · threat · scale · infra',
+    ])
+    await $.session.append(notification(`${ids}\n<status>completed</status>`))
+    expect(linesOf(await drawnOn($, 'terminal', panel))[1]).toBe('✓ Propose ━ ✓ Judge ━ ✓ Synthesize ━ ✓ Deep-dive')
+  })
+
   test('a spawn that arrives while the launch is still answering shows on the card', async ($, on) => {
     const { clock } = await world($, on, {
       duringTool: async (_, e) => {
@@ -356,15 +472,19 @@ describe('engine card', () => {
     expect(engineCard(null as never, 'row' as never, card)).toBeNull()
   })
 
-  test('64 spawns write the cards at most three times, and none of them before the spawn returns', async ($, on) => {
-    const { clock, writes } = await world($, on)
+  test('64 spawns write the cards at most three times, and no spawn reads or writes state before it returns', async ($, on) => {
+    const { clock, writes, reads } = await world($, on)
     await $.tool.call(wfCall())
     const before = { ...writes }
+    const readBefore = { ...reads }
     for (let i = 0; i < 64; i += 1) {
       await $.agent.spawn(spawnWf(`verify:${i + 1}:logic`, { agentIndex: i + 1 }))
       expect(writes, `spawn ${i + 1}`).toEqual(before)
+      expect(reads, `spawn ${i + 1}`).toEqual(readBefore)
     }
     await clock.advance(200)
+    // The count itself reads the cards, so the reads above were being counted.
+    expect(reads.engines ?? 0).toBeGreaterThan(readBefore.engines ?? 0)
     const made = (writes.engines ?? 0) - (before.engines ?? 0)
     expect(made).toBeGreaterThanOrEqual(1)
     expect(made).toBeLessThanOrEqual(3)
