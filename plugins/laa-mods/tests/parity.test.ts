@@ -12,7 +12,7 @@ import type { Fake } from './fake'
 // Each group runs under `visuals: minimal`, where it must hold for good. The groups named in STUBBED also
 // run under `visuals: full`, which draws the same while the drawing a group covers is still a stub: the slice
 // that starts drawing it takes its name out of the list and pins the new drawing in its own test file.
-const STUBBED = ['0.3.0 band', '0.3.0 footer', '0.3.0 findings pane', '0.3.0 learnings pane']
+const STUBBED = ['0.3.0 footer', '0.3.0 findings pane', '0.3.0 learnings pane']
 
 const MODES = [
   { name: 'minimal', options: { visuals: 'minimal' } },
