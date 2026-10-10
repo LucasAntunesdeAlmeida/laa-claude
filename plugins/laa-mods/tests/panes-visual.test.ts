@@ -144,7 +144,7 @@ describe('findings pane · visuals: full', () => {
       // A missing file, a path outside the repo, and a 2 MB file: no code.
       for (const key of ['finding2', 'finding3', 'finding4']) expect(all(keyed(tree, key) ?? '', 'Code'), `${surface} ${key}`).toEqual([])
 
-      // The terminal opens a `file:` link; the other surfaces are sent none and draw its label as text.
+      // Only the terminal opens a `file:` link; what the other surfaces draw is pinned in the next test.
       if (surface === 'terminal') {
         expect(all(tree, 'Link').map(l => l.props)).toEqual([
           { href: 'file:///C:/r/internal/billing/invoice.go', label: 'internal/billing/invoice.go:3' },
@@ -153,11 +153,40 @@ describe('findings pane · visuals: full', () => {
           { href: 'file:///C:/other/secret.go', label: '../other/secret.go:1' },
           { href: 'file:///C:/r/internal/billing/huge.go', label: 'internal/billing/huge.go:1' },
         ])
-      } else {
-        expect(await ui.find({ type: 'Text', text: 'internal/billing/invoice.go:3' }), surface).toBeDefined()
       }
       expect(await ui.find({ type: 'Text', text: '→ guard with addr == nil' }), surface).toMatchObject({ props: { color: 'suggestion' } })
       expect(await ui.find({ type: 'Text', text: 'unescaped customer name' }), surface).toBeUndefined()
+      await ui.unmount()
+    }
+  })
+
+  test('links each location on the terminal only: the other surfaces draw it dim, as 0.3.0 did', async ($, on) => {
+    await world($, on, { files: FILES, sizes: SIZES })
+    await $.command.run(commandRun('laa-findings'))
+    const locations = [
+      'internal/billing/invoice.go:3',
+      'internal/billing/invoice.go:8',
+      'internal/billing/gone.go:3',
+      '../other/secret.go:1',
+      'internal/billing/huge.go:1',
+    ]
+    for (const surface of ALL_SURFACES) {
+      const ui = await $.ui.mount({ ...PANE.findings, surface })
+      const tree = (await ui.drawn()) as Drawn
+      // The line under each finding's key: its tag, then its location.
+      const drawn = locations.map((_, i) => {
+        const line = keyed(tree, `finding${i}`)?.children?.[0] as Exclude<Drawn, string> | undefined
+        return line?.children?.[1] as Exclude<Drawn, string> | undefined
+      })
+      if (surface === 'terminal') {
+        expect(drawn.map(d => [d?.type, d?.props?.label]), surface).toEqual(locations.map(l => ['Link', l]))
+        expect(drawn.every(d => String(d?.props?.href).startsWith('file:///C:/')), surface).toBe(true)
+      } else {
+        // No `file:` address reaches a surface that opens none: no Link, and no plain, undimmed text in its place.
+        expect(all(tree, 'Link'), surface).toEqual([])
+        expect(show(tree), surface).not.toContain('file:')
+        expect(drawn.map(d => [d?.type, d?.props, d?.children]), surface).toEqual(locations.map(l => ['Text', { dimColor: true }, [l]]))
+      }
       await ui.unmount()
     }
   })

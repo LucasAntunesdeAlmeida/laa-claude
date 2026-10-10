@@ -5,7 +5,7 @@ import type { RenderElement } from 'claude-code'
 
 import type { Finding, Findings, Learning, Learnings } from '../types'
 import { barOf, C, isBuilt, rasterOf, wordsOf } from './draw'
-import type { Els } from './draw'
+import type { Els, Surface } from './draw'
 import { resolveFrom, slash } from './git'
 
 const MAX_HREF = 2048
@@ -84,6 +84,8 @@ export type FindingsInput = {
   filter: string
   // The pane's `bodyColumns`.
   columns: number
+  // Where the pane is drawn (`e.surface`): only the terminal opens a `file:` link.
+  surface: Surface
 }
 
 // What the findings pane's controls do; each is one of register.tsx's own handlers.
@@ -171,8 +173,9 @@ const filterRow = (
 // The findings pane under `visuals: full`, top to bottom: the repo (dim); on the terminal a Raster bar by
 // severity (█ CRIT ▓ HIGH ▒ MED ░ LOW); on every surface its legend as Text; `<Select key="severity">` when
 // there are more than 3 findings and the surface draws a Select; then each finding the filter shows: its tag
-// (bold, `warning` for CRIT and HIGH, never `error`), a Link to the file labelled with the location (dim
-// Text when `fileHref` gives none), the title, the code around it when `list.snippets` holds it, `→ fix`,
+// (bold, `warning` for CRIT and HIGH, never `error`), its location (on the terminal a Link to the file; dim
+// Text, as 0.3.0 drew it, on the other surfaces, which open no `file:` address, and when `fileHref` gives
+// none), the title, the code around it when `list.snippets` holds it, `→ fix`,
 // and the Buttons `fix{index}` and `dismiss{index}`; last, `fixHigh` (hotkey f) over every CRIT and HIGH
 // finding, filtered out or not. The keys are 0.3.0's. Returns null to draw the 0.3.0 pane, which
 // register.tsx keeps verbatim.
@@ -203,7 +206,7 @@ export const findingsPane = (els: Els, input: FindingsInput, acts: FindingsActs)
       {select}
       {shown.length === 0 && <Text dimColor>No open findings match this filter.</Text>}
       {shown.map(f => {
-        const href = fileHref(resolveFrom(list.repo, locationOf(f.location).file))
+        const href = input.surface === 'terminal' ? fileHref(resolveFrom(list.repo, locationOf(f.location).file)) : null
         const snippet = list.snippets?.[f.index]
         return (
           <Box key={`finding${f.index}`} flexDirection="column" marginTop={1}>

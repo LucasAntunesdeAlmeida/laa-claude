@@ -7,6 +7,9 @@ import type { Elements, RenderElement } from 'claude-code'
 // pure drawing files take as `els`. `'Raster' in els` does not say the surface draws one (see `isBuilt`).
 export type Els = Elements[keyof Elements]
 
+// Where a hook draws, as its `e.surface` names it.
+export type Surface = keyof Elements
+
 // Whether a surface's table built the element asked of it. Every surface's table holds every constructor;
 // one the surface does not draw answers an empty Box in its place, so `'Raster' in els` or `'Select' in els`
 // alone says nothing: a Raster or a Select is built, then kept only when this says it is one.

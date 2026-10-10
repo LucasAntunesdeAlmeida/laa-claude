@@ -1014,7 +1014,7 @@ export const register: Register = (on, options) => {
       try {
         const visual = findingsPane(
           els,
-          { list, filter: (await read($, filters)).findings, columns: e.props.bodyColumns },
+          { list, filter: (await read($, filters)).findings, columns: e.props.bodyColumns, surface: e.surface },
           {
             onFix: chosen => fixFindings($, list.repo, chosen, isFull),
             onDismiss: finding => dismissFinding($, list.repo, finding, isFull),
