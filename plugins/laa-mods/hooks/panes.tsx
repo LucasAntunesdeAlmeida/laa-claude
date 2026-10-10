@@ -4,7 +4,7 @@
 import type { RenderElement } from 'claude-code'
 
 import type { Finding, Findings, Learning, Learnings } from '../types'
-import { barOf, C, isBuilt, rasterOf, wordsOf } from './draw'
+import { barOf, C, isBuilt, rasterOf, sanitize, wordsOf } from './draw'
 import type { Els, Surface } from './draw'
 import { resolveFrom, slash } from './git'
 
@@ -222,15 +222,18 @@ export const findingsPane = (els: Els, input: FindingsInput, acts: FindingsActs)
       {shown.map(f => {
         const href = input.surface === 'terminal' ? fileHref(resolveFrom(list.repo, locationOf(f.location).file)) : null
         const snippet = list.snippets?.[f.index]
+        // The review's own text is drawn without its control characters: one of them refuses the whole pane.
+        const location = sanitize(f.location)
+        const fix = sanitize(f.fix)
         return (
           <Box key={`finding${f.index}`} flexDirection="column" marginTop={1}>
             <Box>
               <Text bold color={isHigh(f) ? C.warning : undefined}>{`${f.tag.padEnd(4)}  `}</Text>
-              {href ? <Link href={href} label={f.location} /> : <Text dimColor>{f.location}</Text>}
+              {href ? <Link href={href} label={location} /> : <Text dimColor>{location}</Text>}
             </Box>
-            <Text>{f.title}</Text>
+            <Text>{sanitize(f.title)}</Text>
             {snippet && <Code source={snippet.source} startLine={snippet.startLine} path={snippet.path} wrap="truncate-end" />}
-            {f.fix && <Text color={C.action}>→ {f.fix}</Text>}
+            {fix && <Text color={C.action}>→ {fix}</Text>}
             <Box>
               <Button key={`fix${f.index}`} label="Fix" onPress={() => acts.onFix([f])} />
               <Button key={`dismiss${f.index}`} label="Dismiss" onPress={() => acts.onDismiss(f)} />
@@ -281,10 +284,10 @@ export const learningsPane = (els: Els, input: LearningsInput, acts: LearningsAc
       {shown.length === 0 && <Text dimColor>No open learnings match this filter.</Text>}
       {shown.map(entry => (
         <Box key={`entry${entry.index}`} flexDirection="column" marginTop={1}>
-          <Text bold>{entry.title}</Text>
-          <Text dimColor>{entry.scope} · {entry.kind} · {entry.target}</Text>
-          <Text>{entry.signal}</Text>
-          <Text color={C.action}>→ {entry.proposal}</Text>
+          <Text bold>{sanitize(entry.title)}</Text>
+          <Text dimColor>{sanitize(entry.scope)} · {sanitize(entry.kind)} · {sanitize(entry.target)}</Text>
+          <Text>{sanitize(entry.signal)}</Text>
+          <Text color={C.action}>→ {sanitize(entry.proposal)}</Text>
           <Button key={`reject${entry.index}`} label="Reject" onPress={() => acts.onReject(entry)} />
         </Box>
       ))}

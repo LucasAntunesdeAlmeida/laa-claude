@@ -443,6 +443,61 @@ describe('finding snippets · safe to draw', () => {
     }
   })
 
+  test("control characters in a finding's own text are left out, and its buttons still act on it as the file has it", async ($, on) => {
+    const title = 'beep \u001b[31mred\u001b[0m \u0007title'
+    const review = [`## HIGH · internal/billing/in\u0007voice.go:3 · ${title}`, '- fix: strip \u001b[1mit\u0007', '- status: open', ''].join('\n')
+    const { filled } = await world($, on, { files: { [REVIEW_FILE]: review } })
+    await $.command.run(commandRun('laa-findings'))
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ ...PANE.findings, surface })
+      // A refused tree rejects here: the pane draws.
+      const tree = (await ui.drawn()) as Drawn
+      expect(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(show(tree).replace(/\\u[0-9a-f]{4}/g, '\u0007')), surface).toBe(false)
+      expect(await ui.find({ type: 'Text', text: 'beep red title' }), surface).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: '→ strip it' }), surface).toBeDefined()
+      const location = (keyed(tree, 'finding0')?.children?.[0] as Exclude<Drawn, string>).children?.[1] as Exclude<Drawn, string>
+      expect(surface === 'terminal' ? location.props?.label : location.children, surface).toEqual(
+        surface === 'terminal' ? 'internal/billing/invoice.go:3' : ['internal/billing/invoice.go:3'],
+      )
+      await ui.unmount()
+    }
+    const ui = await $.ui.mount({ ...PANE.findings, surface: 'terminal' })
+    await ui.press({ key: 'fix0' })
+    expect(filled).toEqual([
+      `Fix this finding from the last review, then mark it fixed in ${REVIEW_FILE}: HIGH internal/billing/in\u0007voice.go:3 ${title} → strip \u001b[1mit\u0007`,
+    ])
+    await ui.unmount()
+  })
+
+  test("control characters in a learning's own text are left out, and Reject still finds the entry", async ($, on) => {
+    const entry = [
+      '## beep \u001b[31mred\u001b[0m \u0007learning',
+      '- scope: local\u0007',
+      '- kind: correc\u001b[1mtion',
+      '- target: CLAUDE\u0007.md',
+      '- signal: saw \u0007it',
+      '- proposal: note \u001b[4mit',
+      '- status: open',
+      '',
+    ].join('\n')
+    const { seen } = await world($, on, { learnings: entry })
+    await $.command.run(commandRun('laa-learnings'))
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await $.ui.mount({ ...PANE.learnings, surface })
+      const tree = (await ui.drawn()) as Drawn
+      expect(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/.test(show(tree).replace(/\\u[0-9a-f]{4}/g, '\u0007')), surface).toBe(false)
+      expect(await ui.find({ type: 'Text', text: 'beep red learning' }), surface).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: 'local · correction · CLAUDE.md' }), surface).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: 'saw it' }), surface).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: '→ note it' }), surface).toBeDefined()
+      await ui.unmount()
+    }
+    const ui = await $.ui.mount({ ...PANE.learnings, surface: 'terminal' })
+    await ui.press({ key: 'reject0' })
+    expect(seen.learnings).toContain('- status: rejected (dismissed in the laa-learnings pane)')
+    await ui.unmount()
+  })
+
   test('a link that lands outside the repo gives no code, and one that lands inside it does', async ($, on) => {
     const review = [
       '## HIGH · internal/billing/vendor.go:1 · a link out of the repo',
