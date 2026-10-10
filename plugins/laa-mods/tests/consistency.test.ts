@@ -4,8 +4,8 @@ import type { On } from 'claude-code'
 
 import { decodeCells, paletteOf } from '../hooks/draw'
 import {
-  ALL_SURFACES, BAND, BAND_SURFACES, bash, commandRun, fakeRepo, FOOTER, golden, HINT, notification, PANE, reply, show, skill,
-  SPINNER, spawnWf, TURN, turnEnd, WF, WF_LAUNCHED, wfCall,
+  ALL_SURFACES, asked, BAND, BAND_SURFACES, bash, commandRun, fakeRepo, FOOTER, golden, HINT, notification, PANE, reply, show, skill,
+  SPINNER, spawnWf, TURN, turnEnd, typed, WF, WF_LAUNCHED, wfCall,
 } from './fake'
 import type { Drawn, Fake } from './fake'
 
@@ -190,6 +190,72 @@ describe('a feature run at the ★ gate of step 5', () => {
     expect(textOf(await turnLine($, 4321))).toBe(' · laa:feature ★')
     expect(await footer($, handed)).toEqual([...FOOTER.props.modes, 'laa:feature ★'])
     expect(decodeCells(String((await band($, 'terminal')).steps?.props?.cells)).text).toBe(cells.text)
+  })
+})
+
+describe('once the person answers a text gate', () => {
+  const PLAN = '✓ context ━ ✓ size ━ ✓ explore ━ ✓ clarify ━ ✓ design ━ ● plan ━ ○ build ━ ○ review ━ ○ retro'
+
+  // A feature run that asked its gate in text and ended the turn to wait for the answer.
+  async function waiting($: Engine) {
+    await $.skill.prompt(skill('feature'))
+    await $.session.append(reply(GATE_5))
+    await $.turn.complete(turnEnd(GATE_5))
+  }
+
+  test('the spinner, the stepper, the band, the footer, and the hint show the step while Claude works on it', async ($, on) => {
+    const { handed } = await world($, on, { branch: 'feat/export' })
+    await waiting($)
+    expect(await spinner($, handed)).toBe('laa:feature · ★ Approve the plan?')
+
+    await $.session.append(typed('Approve, but split slice 3.'))
+    // A reply in prose, with no step line of its own.
+    await $.session.append(reply('Splitting slice 3 into two.', 'row-2'))
+
+    for (const surface of BAND_SURFACES) expect(await spinner($, handed, surface), surface).toBe('laa:feature · Plan slices 5/8')
+    const terminal = await band($, 'terminal')
+    expect(terminal.row1).toBe('laa · feat/export · ● laa:feature ▸ 5/8 Plan slices')
+    expect(decodeCells(String(terminal.steps?.props?.cells)).text).toBe(PLAN)
+    expect(textOf((await band($, 'desktop')).steps ?? '')).toBe(PLAN)
+    expect(await footer($, handed)).toEqual([...FOOTER.props.modes, 'laa:feature 5/8'])
+    for (const surface of BAND_SURFACES) {
+      expect(show(await drawn($, { ...HINT, surface })), surface).toBe(ENGINE_OWN)
+      expect(handed.PromptHint, surface).toEqual(HINT.props)
+    }
+  })
+
+  test('an answer given in an AskUserQuestion dialog clears it too', async ($, on) => {
+    const { handed } = await world($, on, { branch: 'feat/export' })
+    await waiting($)
+    await $.session.append(asked('Approve'))
+    expect(await spinner($, handed)).toBe('laa:feature · Plan slices 5/8')
+    expect(await footer($, handed)).toEqual([...FOOTER.props.modes, 'laa:feature 5/8'])
+  })
+
+  test('a task notification or a follow-up the person did not type leaves the gate waiting', async ($, on) => {
+    const { handed } = await world($, on, { branch: 'feat/export' })
+    await waiting($)
+    await $.session.append(notification('task t9 completed'))
+    await $.session.append({ ...notification('task t9 completed', 'row-n2'), door: 'prompt' as const, origin: { kind: 'task-notification' as const } })
+    await $.session.append({ ...typed('Continue.', 'row-p2'), origin: { kind: 'auto-continuation' as const } })
+    await $.session.append({ ...typed('Nightly check.', 'row-p3'), origin: { kind: 'scheduled-trigger' as const } })
+    expect(await spinner($, handed)).toBe('laa:feature · ★ Approve the plan?')
+    expect(await footer($, handed)).toEqual([...FOOTER.props.modes, 'laa:feature ★'])
+    expect(decodeCells(String((await band($, 'terminal')).steps?.props?.cells)).text).toContain('★ plan')
+    expect(show(await drawn($, { ...HINT, surface: 'terminal' }))).toBe(ENGINE_OWN)
+    expect(handed.PromptHint).toEqual({ ...HINT.props, tail: '★ waiting on you: Approve the plan?' })
+  })
+
+  test('under visuals: minimal the gate stays until the next step line, as in 0.3.0', MINIMAL, async ($, on) => {
+    const { handed } = await world($, on, { branch: 'feat/export' })
+    await waiting($)
+    await $.session.append(typed('Approve.'))
+    await $.session.append(asked('Approve'))
+    await $.session.append(reply('Starting on the slices.', 'row-2'))
+    expect((await band($, 'terminal')).row1).toBe('laa · feat/export · ★ laa:feature · waiting on you: Approve the plan?')
+    expect(await footer($, handed)).toEqual([...FOOTER.props.modes, 'laa:feature ★'])
+    await $.session.append(reply('**▸ 6/8 · Implement** · 3 slices', 'row-3'))
+    expect(await footer($, handed)).toEqual([...FOOTER.props.modes, 'laa:feature 6/8'])
   })
 })
 

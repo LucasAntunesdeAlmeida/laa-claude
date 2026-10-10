@@ -137,6 +137,22 @@ export const reply = (text: string, uuid = 'row-1') => ({
   uuid,
 })
 
+// A message the person typed and sent, as the session stores it.
+export const typed = (text: string, uuid = 'row-p1') => ({
+  message: { type: 'user' as const, role: 'user' as const, content: [{ type: 'text' as const, text }] },
+  door: 'prompt' as const,
+  origin: { kind: 'composer' as const },
+  uuid,
+})
+
+// The person's answer to an AskUserQuestion dialog, as the session stores it: the tool's result row.
+export const asked = (answer: string, uuid = 'row-a1') => ({
+  message: { type: 'user' as const, role: 'user' as const, content: [{ type: 'tool_result' as const, tool_use_id: 'toolu_ask1', content: answer }] },
+  door: 'tool-result' as const,
+  origin: { kind: 'tool' as const, tool: 'AskUserQuestion' },
+  uuid,
+})
+
 // The end of a main-loop turn that answered with `answer`.
 export const turnEnd = (answer: string, extra: { agentId?: string; isAborted?: boolean } = {}) => ({
   answer,

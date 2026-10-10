@@ -195,6 +195,16 @@ export const nextActionOf = (text: string) => {
 export const gateOfQuestions = (questions: readonly { question: string }[]) =>
   questions.map(q => q.question.trim()).find(q => q.startsWith('★'))?.replace(/^★\s*/, '') ?? null
 
+// The origins of a prompt the person sent themselves: typed at the terminal, through Remote Control, or as
+// the SDK host. A task notification, a schedule, another session, and the engine's own follow-ups are not.
+const OWN_PROMPTS = ['composer', 'bridge', 'sdk']
+
+// Whether a conversation row is the person answering: a prompt of their own, or their answer to an
+// AskUserQuestion dialog (the tool's result row).
+export const isPersonAnswer = (door: string, origin: { kind: string; tool?: string }) =>
+  (door === 'prompt' && OWN_PROMPTS.includes(origin.kind)) ||
+  (door === 'tool-result' && origin.kind === 'tool' && origin.tool === 'AskUserQuestion')
+
 // Every laa command by the job it does, for /laa-help. CI checks that each laa skill is listed.
 export const HELP: readonly { group: string; items: readonly (readonly [string, string])[] }[] = [
   { group: 'Understand', items: [['/laa:explore <question>', 'how the code works, read-only']] },

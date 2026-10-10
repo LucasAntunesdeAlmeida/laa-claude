@@ -6,7 +6,7 @@ import { C } from './draw'
 import { cardFor, dropCard, ended, engineCard, finished, launched, noticeOf, phaseNow, spawned, startCard } from './engines'
 import type { Cards, Spawn } from './engines'
 import {
-  commitDir, countOpenHigh, countOpenLearnings, ENGINES, gateOfQuestions, HELP, isUnder, journalFile, laaSkillOf,
+  commitDir, countOpenHigh, countOpenLearnings, ENGINES, gateOfQuestions, HELP, isPersonAnswer, isUnder, journalFile, laaSkillOf,
   LOCAL_DIR, nextActionOf, parentOf, parseFindings, parseJournal, parseLearnings, PIPELINES, progressOf, rejectLearning,
   resolveFrom, REVIEW_FILE, setFindingStatus, slash, stepNumbersOf, stillOpen, suggestionFor, TRACKED,
 } from './git'
@@ -642,7 +642,8 @@ export const register: Register = (on, options) => {
     }).catch(($, e, next) => next(e))
   }
 
-  // The model's own rows carry the run's mode, step, gate, and closing lines; a task notification ends the engine.
+  // The model's own rows carry the run's mode, step, gate, and closing lines; a task notification ends the
+  // engine; under `visuals: full` the person's own answer ends a gate's wait.
   on('session.append', async ($, e, next) => {
     const stored = await next(e)
     if (e.agentId) return stored
@@ -655,6 +656,9 @@ export const register: Register = (on, options) => {
         // A background task finished (a workflow's notification, folded into a turn or starting its own).
         await update($, run, r => (r?.engine ? { ...r, engine: null } : r))
         if (isFull) await finishEngine($, textOf(e.message.content), was)
+      } else if (isFull && isPersonAnswer(e.door, e.origin)) {
+        // The person answered: the gate no longer waits on them while Claude works on the answer.
+        await update($, run, r => (r?.gate ? { ...r, gate: null } : r))
       }
     } catch {
       // A row the band can't read leaves it as it was.
