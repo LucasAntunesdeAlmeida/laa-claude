@@ -195,6 +195,18 @@ describe('which card a spawn counts on', () => {
     expect(cardFor({}, { toolUseId: WF.toolUseId, runId: WF.runId })).toBeNull()
   })
 
+  test('a card lists 32 roles: an agent of a 33rd is counted, and not listed', () => {
+    const role = (i: number) => `role-${String.fromCharCode(97 + (i % 26))}${i < 26 ? '' : '-more'}`
+    const spawns = Array.from({ length: 33 }, (_, i) => ({ toolUseId: WF.toolUseId, runId: WF.runId, role: role(i) }))
+    const full = cardOf(spawned(fresh, spawns))
+    expect(full.count).toBe(33)
+    expect(Object.keys(full.roles)).toEqual(spawns.slice(0, 32).map(s => s.role))
+    expect(full.roles[role(32)]).toBeUndefined()
+    // A role already listed still counts its agents.
+    const again = cardOf(spawned({ [WF.toolUseId]: full }, [{ toolUseId: WF.toolUseId, runId: WF.runId, role: role(0) }]))
+    expect([again.count, again.roles[role(0)], Object.keys(again.roles).length]).toEqual([34, 2, 32])
+  })
+
   test('the phase a run has reached is the latest any of its roles works in', () => {
     const at = (roles: Record<string, number>, name = 'investigate') => phaseNow({ ...cardOf(fresh), name, roles })
     expect(at({})).toBeNull()

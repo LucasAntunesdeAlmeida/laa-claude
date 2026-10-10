@@ -239,6 +239,67 @@ describe('run history', () => {
   })
 })
 
+describe('what the session keeps is capped', () => {
+  test('the newest 50 closing reports and the newest 50 turns', async ($, on) => {
+    const { state } = await world($, on)
+    const closing = (i: number) => `**✓ Fixed** · bug ${i}\n\n**Next**\n- \`/laa:retro\`: capture what we learned`
+    for (let i = 1; i <= 51; i += 1) {
+      await $.skill.prompt(skill('fix'))
+      await $.session.append(reply(closing(i), `row-${i}`))
+      await $.turn.complete({ ...turnEnd(closing(i)), durationMs: 1000 * i })
+    }
+    const closings = state.closings as string[]
+    expect(closings).toHaveLength(50)
+    expect([closings[0], closings[49]]).toEqual([closingOf(closing(2))?.key, closingOf(closing(51))?.key])
+    const tags = state.turnTags as { ms: number }[]
+    expect(tags).toHaveLength(50)
+    expect([tags[0]?.ms, tags[49]?.ms]).toEqual([2000, 51000])
+  })
+
+  test('the first 30 findings get code, the 31st none', async ($, on) => {
+    const lines = Array.from({ length: 31 }, (_, i) => `line ${i + 1}`)
+    const review = lines.map((_, i) => `## LOW · src/export/long.go:${i + 1} · finding ${i}\n- status: open\n`).join('')
+    const { seen, state } = await world($, on, { files: { '.claude/laa/local/last-review.md': review, 'src/export/long.go': lines.join('\n') } })
+    await $.command.run(commandRun('laa-findings'))
+    const shown = state.findings as { entries: unknown[]; snippets: Record<number, { startLine: number }> }
+    expect(shown.entries).toHaveLength(31)
+    expect(Object.keys(shown.snippets)).toEqual(Array.from({ length: 30 }, (_, i) => String(i)))
+    expect(shown.snippets[29]?.startLine).toBe(28)
+    expect(seen.reads.filter(p => p.startsWith('src/'))).toEqual(['src/export/long.go'])
+  })
+
+  test("the code of 60 files is remembered: the 61st takes the oldest one's place", async ($, on) => {
+    const name = (i: number) => `src/gen/f${String(i).padStart(2, '0')}.go`
+    const review = (from: number, to: number) =>
+      Array.from({ length: to - from }, (_, i) => `## LOW · ${name(from + i)}:1 · finding ${from + i}\n- status: open\n`).join('')
+    const files = Object.fromEntries(Array.from({ length: 61 }, (_, i) => [name(i), `package gen // ${i}`]))
+    const { seen } = await world($, on, { files: { ...files, '.claude/laa/local/last-review.md': review(0, 30) } })
+    const open = async (text: string) => {
+      seen.setFile('.claude/laa/local/last-review.md', text)
+      await $.command.run(commandRun('laa-findings'))
+    }
+    const readsOf = (i: number) => seen.reads.filter(p => p === name(i)).length
+    await $.command.run(commandRun('laa-findings'))
+    await open(review(30, 60))
+    // All 60 are remembered: the first review opens again without a read.
+    await open(review(0, 30))
+    expect([readsOf(0), readsOf(15), readsOf(29), readsOf(45)]).toEqual([1, 1, 1, 1])
+    await open(review(60, 61))
+    await open(review(0, 30))
+    // The 61st file pushed the oldest out, and only it: that one is read again.
+    expect([readsOf(0), readsOf(15), readsOf(29), readsOf(60)]).toEqual([2, 1, 1, 1])
+  })
+
+  test('at 1024 spawns still waiting to be counted, they are given up and the count starts over', async ($, on) => {
+    const { clock, state } = await world($, on)
+    await $.tool.call(wfCall())
+    // No wait comes due while the clock stands still: the 1025th spawn finds 1024 waiting.
+    for (let i = 0; i < 1025; i += 1) await $.agent.spawn(spawnWf('verify:1:logic', { agentIndex: i + 1 }))
+    await clock.advance(200)
+    expect(state.engines).toMatchObject({ [WF.toolUseId]: { roles: { verify: 1 }, count: 1 } })
+  })
+})
+
 describe('theme', () => {
   test("reads the person's theme when a laa skill starts, and writes it only when it changed", async ($, on) => {
     const { clock, writes, state } = await world($, on, { theme: 'dark-daltonized' })
