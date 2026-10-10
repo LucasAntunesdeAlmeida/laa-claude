@@ -1,13 +1,22 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Finding, Learning, Learnings, Run, Status } from '../types'
+import type { Finding, Findings, Learning, Learnings, Run, Snippet, Status } from '../types'
+import { C } from './draw'
+import { cardFor, dropCard, ended, engineCard, finished, launched, noticeOf, phaseNow, spawned, startCard } from './engines'
+import type { Cards, Spawn } from './engines'
 import {
   commitDir, countOpenHigh, countOpenLearnings, ENGINES, gateOfQuestions, HELP, isUnder, journalFile, laaSkillOf,
   LOCAL_DIR, nextActionOf, parentOf, parseFindings, parseJournal, parseLearnings, PIPELINES, progressOf, rejectLearning,
   resolveFrom, REVIEW_FILE, setFindingStatus, slash, stillOpen, suggestionFor, TRACKED,
 } from './git'
 import type { Progress, Repo } from './git'
+import { gateText, runTag, spinnerText, turnTagFor } from './labels'
+import { findingsPane, learningsPane, locationOf, snippetOf } from './panes'
+import { closingOf, isLaaClosing, reportCard } from './report'
+import type { Tone } from './report'
+import { stepperRow } from './stepper'
+import { roleOf } from './tables'
 
 type Engine = EngineInterface
 
@@ -19,6 +28,12 @@ const pipeline = atom({ plugin: 'laa-mods', key: 'pipeline' } as const, null)
 const run = atom({ plugin: 'laa-mods', key: 'run' } as const, null)
 const nextUp = atom({ plugin: 'laa-mods', key: 'nextUp' } as const, null)
 const learningsBefore = atom({ plugin: 'laa-mods', key: 'learningsBefore' } as const, null)
+// Written only under `visuals: full`.
+const theme = atom({ plugin: 'laa-mods', key: 'theme' } as const, null)
+const engines = atom({ plugin: 'laa-mods', key: 'engines' } as const, {})
+const closings = atom({ plugin: 'laa-mods', key: 'closings' } as const, [])
+const turnTags = atom({ plugin: 'laa-mods', key: 'turnTags' } as const, [])
+const filters = atom({ plugin: 'laa-mods', key: 'filters' } as const, { findings: 'all', learnings: 'all' })
 
 const ALLOW_COMMAND = 'laa-allow-main'
 const HELP_COMMAND = 'laa-help'
@@ -36,8 +51,30 @@ const RETRO = '/laa:retro'
 // Out-of-band text (toasts, command output, pane titles) starts with this, so it reads as laa's own.
 const PRE = 'laa · '
 
-// The theme's semantic colors, so laa's marks follow the person's theme, colorblind themes included.
-const C = { danger: 'error', warning: 'warning', action: 'suggestion', gate: 'permission' } as const
+// How many of each the session keeps; the oldest go first.
+const MAX_CLOSINGS = 50
+const MAX_TURN_TAGS = 50
+// Spawns are counted this long after the first of a burst, in one write. A burst that outgrows SPAWN_REARM
+// arms the count again, so a timer that never fired can't leave spawns waiting for good; at MAX_PENDING
+// the ones still waiting are given up.
+const SPAWN_FLUSH_MS = 200
+const SPAWN_REARM = 64
+const MAX_PENDING = 1024
+// Snippets: how many findings get one, the largest file read for one, and how many files' worth are remembered.
+const MAX_SNIPPETS = 30
+const MAX_SNIPPET_BYTES = 1024 * 1024
+const MAX_SNIPPET_CACHE = 60
+const SNIPPET_BATCH = 8
+
+// Workflow agents that started since the last flush, waiting to be counted on their engine's card.
+// Display state that is safe to lose: a reload drops at most one burst.
+const pendingSpawns: Spawn[] = []
+
+// The review text the findings were last loaded from, so an unchanged file costs no snippet reads and no write.
+let loadedReview: { repo: string; text: string } | null = null
+
+// The snippets already cut from a file, by its path and modification time, then by line.
+const snippetCache = new Map<string, Map<number, ReturnType<typeof snippetOf>>>()
 
 const denial = (repo: Repo, what: string) =>
   `laa: ${what} on the default branch \`${repo.branch}\` of ${repo.top} is blocked. ` +
@@ -135,11 +172,16 @@ async function toastLearnings($: Engine) {
 }
 
 // A /clear starts a new conversation: nothing the last one was doing carries over.
-async function forgetConversation($: Engine) {
+async function forgetConversation($: Engine, isFull: boolean) {
   await update($, run, () => null)
   await update($, nextUp, () => null)
   await update($, pipeline, () => null)
   await update($, learningsBefore, () => null)
+  if (!isFull) return
+  pendingSpawns.length = 0
+  await update($, engines, () => ({}))
+  await update($, closings, () => [])
+  await update($, turnTags, () => [])
 }
 
 const mutedKey = (top: string) => `mutedMap:${slash(top).toLowerCase()}`
@@ -178,23 +220,133 @@ async function refresh($: Engine) {
 
 // What a block of laa output says about the run: a mode line starts one, steps and gates move it,
 // and the closing report (a status line, then its Next list) ends it. A step line after the run
-// was dropped picks the pipeline back up.
-async function applyProgress($: Engine, p: Progress) {
+// was dropped picks the pipeline back up, with no record of the steps before it.
+// `closingText` is the block itself under `visuals: full`: when it closes a run, its status line is
+// recorded, which is how the report card knows the block as laa's.
+async function applyProgress($: Engine, p: Progress, closingText?: string) {
   if (!p.skill && !p.step && !p.gate && !p.isClosing) return
   const p0 = await read($, pipeline)
+  let hadRun = false as boolean
   await update($, run, (r): Run | null => {
+    hadRun = r !== null
     if (p.isClosing) return null
     let next = r
-    if (p.skill && TRACKED.includes(p.skill) && next?.skill !== p.skill) next = { skill: p.skill, step: null, gate: null, engine: null }
+    if (p.skill && TRACKED.includes(p.skill) && next?.skill !== p.skill) next = { skill: p.skill, step: null, gate: null, engine: null, seen: [] }
     if (!next && p.step && p0) next = { skill: p0.skill, step: null, gate: null, engine: null }
     if (!next) return null
     if (p.step) {
       const isSame = next.step?.n === p.step.n && next.step.last === p.step.last
       next = { ...next, step: p.step, gate: null, engine: isSame ? next.engine : null }
+      if (next.seen && !next.seen.includes(p.step.n)) next = { ...next, seen: [...next.seen, p.step.n] }
     }
     if (p.gate) next = { ...next, gate: p.gate }
     return next
   })
+  if (closingText === undefined || !p.isClosing || !hadRun) return
+  const closing = closingOf(closingText)
+  if (closing) await update($, closings, was => (was.at(-1) === closing.statusRaw ? was : [...was, closing.statusRaw].slice(-MAX_CLOSINGS)))
+}
+
+// The person's theme by name, for the Raster colors; null when it can't be read. Runs in the background
+// (never awaited on a turn's path) and writes only a change.
+async function loadTheme($: Engine) {
+  let next: string | null = null
+  try {
+    const value = (await $.config.list()).find(row => row.key === 'theme')?.value
+    next = typeof value === 'string' ? value : null
+  } catch {
+    // No settings menu to read: the Raster draws in the terminal's own color.
+  }
+  try {
+    if ((await read($, theme)) !== next) await update($, theme, () => next)
+  } catch {
+    // The module may have reloaded; the next load tries again.
+  }
+}
+
+// A workflow agent started: remember it, and count the whole burst on its engine's card in one write a
+// moment later. No state is read or written here, so a phase starting dozens of agents at once costs each
+// spawn nothing.
+function noteSpawn($: Engine, spawn: Spawn) {
+  if (pendingSpawns.length >= MAX_PENDING) pendingSpawns.length = 0
+  pendingSpawns.push(spawn)
+  if (pendingSpawns.length % SPAWN_REARM === 1) void $.clock.after(SPAWN_FLUSH_MS, () => void flushSpawns($))
+}
+
+// Counts every waiting spawn on its engine's card, in one write; never throws, since it runs from a timer.
+async function flushSpawns($: Engine) {
+  const batch = pendingSpawns.splice(0)
+  if (batch.length === 0) return
+  try {
+    // Nothing to count on when no card could be theirs: skip the write.
+    const cards = await read($, engines)
+    if (batch.some(spawn => cardFor(cards, spawn) !== null)) await update($, engines, cs => spawned(cs, batch))
+  } catch {
+    // The module may have reloaded; the card shows fewer agents than ran.
+  }
+}
+
+// A task notification arrived: its engine's card takes the report and how the task ended. One that names no
+// card ends the card of `was`, the engine the run showed as running until now.
+async function finishEngine($: Engine, text: string, was: string | null) {
+  const notice = noticeOf(text)
+  const settle = (cards: Cards) => finished(cards, notice) ?? ended(cards, was)
+  const cards = await read($, engines)
+  if (settle(cards) !== cards) await update($, engines, settle)
+}
+
+// At a turn's end, while its run is still set: keep the run's footer tag under the turn's duration, so the
+// turn's closing line can carry it.
+async function tagTurn($: Engine, ms: number) {
+  const r = await read($, run)
+  if (r) await update($, turnTags, tags => [...tags, { ms, tag: runTag(r) }].slice(-MAX_TURN_TAGS))
+}
+
+// The person picked a filter in a pane.
+async function setFilter($: Engine, pane: 'findings' | 'learnings', value: string) {
+  await update($, filters, f => ({ ...f, [pane]: value }))
+}
+
+// The code around each finding, by the finding's index: at most 30 findings, files under the repo and
+// outside .git, each read once whatever the number of findings in it, eight at a time. A file that is
+// missing, over 1 MB, or binary gives no snippet; nothing here throws.
+async function loadSnippets($: Engine, top: string, entries: readonly Finding[]) {
+  const wanted = entries.slice(0, MAX_SNIPPETS).flatMap(f => {
+    const at = locationOf(f.location)
+    const path = resolveFrom(top, at.file)
+    // The repo's own files only, checked on the path's spelling: no git call per finding.
+    if (at.line === null || !isUnder(path, top) || isUnder(path, `${top}/.git`)) return []
+    return [{ index: f.index, file: at.file, path, line: at.line }]
+  })
+  const cut = new Map<string, Map<number, ReturnType<typeof snippetOf>>>()
+  const paths = [...new Set(wanted.map(w => w.path))]
+  for (let at = 0; at < paths.length; at += SNIPPET_BATCH) {
+    await Promise.all(paths.slice(at, at + SNIPPET_BATCH).map(async path => {
+      try {
+        const stat = await $.fs.stat(path)
+        if (stat.kind !== 'file' || stat.size > MAX_SNIPPET_BYTES) return
+        const key = `${path}\n${stat.mtimeMs}`
+        const lines = wanted.filter(w => w.path === path).map(w => w.line)
+        let known = snippetCache.get(key)
+        if (!known || lines.some(line => !known?.has(line))) {
+          const text = String(await $.fs.read(path))
+          known = new Map(lines.map(line => [line, snippetOf(text, line)]))
+          snippetCache.delete(key)
+          snippetCache.set(key, known)
+          for (const old of [...snippetCache.keys()].slice(0, Math.max(0, snippetCache.size - MAX_SNIPPET_CACHE))) snippetCache.delete(old)
+        }
+        cut.set(path, known)
+      } catch {
+        // Missing or unreadable: this file's findings draw without code.
+      }
+    }))
+  }
+  const snippets: Record<number, Snippet> = {}
+  for (const w of wanted) {
+    const snippet = cut.get(w.path)?.get(w.line)
+    if (snippet) snippets[w.index] = { ...snippet, path: w.file }
+  }
+  return snippets
 }
 
 const textOf = (content: readonly unknown[]) =>
@@ -225,18 +377,27 @@ async function startEvolve($: Engine) {
   $.ui.toast(filled.isFilled ? `${PRE}/laa:evolve is in the prompt. Press Enter to run it.` : `${PRE}type /laa:evolve to run it.`)
 }
 
-async function loadFindings($: Engine, top: string) {
-  const next = { repo: top, entries: parseFindings(await readText($, `${top}/${REVIEW_FILE}`)) }
+// Under `visuals: full` the findings carry the code around each one, and a review file that has not changed
+// since the last load is not parsed, read around, or written again.
+async function loadFindings($: Engine, top: string, isFull: boolean) {
+  const text = await readText($, `${top}/${REVIEW_FILE}`)
+  if (isFull && loadedReview?.repo === top && loadedReview.text === text) {
+    const shown = await read($, findings)
+    if (shown?.repo === top) return shown
+  }
+  const next: Findings = { repo: top, entries: parseFindings(text) }
+  if (isFull) next.snippets = await loadSnippets($, top, next.entries)
   await update($, findings, () => next)
+  if (isFull) loadedReview = { repo: top, text }
   return next
 }
 
 // The person pressed Fix: put a self-contained request for the fix in the prompt, for them to send.
-async function fixFindings($: Engine, top: string, chosen: readonly Finding[]) {
+async function fixFindings($: Engine, top: string, chosen: readonly Finding[], isFull: boolean) {
   const entries = stillOpen(await readText($, `${top}/${REVIEW_FILE}`), chosen)
   if (entries.length < chosen.length) {
     $.ui.toast(`${PRE}last-review.md changed since the pane loaded it; reloaded.`)
-    await loadFindings($, top)
+    await loadFindings($, top, isFull)
     return
   }
   const what = entries.map(f => `${f.tag} ${f.location} ${f.title}${f.fix ? ` → ${f.fix}` : ''}`).join('; ')
@@ -248,7 +409,7 @@ async function fixFindings($: Engine, top: string, chosen: readonly Finding[]) {
 }
 
 // The person pressed Dismiss: mark the finding dismissed and reload.
-async function dismissFinding($: Engine, top: string, finding: Finding) {
+async function dismissFinding($: Engine, top: string, finding: Finding, isFull: boolean) {
   const path = `${top}/${REVIEW_FILE}`
   const next = setFindingStatus(await readText($, path), finding.index, finding.location, 'dismissed (in the laa-findings pane)')
   if (next === null) {
@@ -257,7 +418,7 @@ async function dismissFinding($: Engine, top: string, finding: Finding) {
     await $.fs.write(path, next)
     $.ui.toast(`${PRE}dismissed ${finding.tag} ${finding.location}`)
   }
-  await loadFindings($, top)
+  await loadFindings($, top, isFull)
   void refresh($)
 }
 
@@ -321,6 +482,9 @@ const tagColor = (tag: string) => (tag === 'CRIT' || tag === 'HIGH' ? C.danger :
 
 export const register: Register = (on, options) => {
   const guard = String(options.guard ?? 'adopted')
+  // `full` draws the stepper, the cards, and the visual panes. `minimal` registers none of the new hooks
+  // and takes the 0.3.0 branch of every shared one, so it draws exactly what 0.3.0 drew.
+  const isFull = String(options.visuals ?? 'full') !== 'minimal'
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -342,6 +506,7 @@ export const register: Register = (on, options) => {
       argumentHint: '[repo path]',
     })
     void refresh($)
+    if (isFull) void loadTheme($)
     return next(e)
   })
 
@@ -365,6 +530,7 @@ export const register: Register = (on, options) => {
     const where = e.args.trim() || (await $.session.cwd())
     const repo = await repoAt($, resolveFrom(await $.session.cwd(), where))
     if (!repo) return { text: `${PRE}${where} is not in a git repository.` }
+    if (isFull) await setFilter($, 'learnings', 'all')
     const list = await loadLearnings($, repo.top)
     const opened = await $.ui.open({ id: LEARNINGS_PANE, title: `${PRE}open learnings` })
     const count = `${plural(list.entries.length, 'open learning')} in ${repo.top}`
@@ -376,7 +542,8 @@ export const register: Register = (on, options) => {
     const repo = await repoAt($, resolveFrom(await $.session.cwd(), where))
     if (!repo) return { text: `${PRE}${where} is not in a git repository.` }
     if (!(await $.fs.exists(`${repo.top}/${REVIEW_FILE}`))) return { text: `${PRE}no saved review in ${repo.top}. Run /laa:review first.` }
-    const list = await loadFindings($, repo.top)
+    if (isFull) await setFilter($, 'findings', 'all')
+    const list = await loadFindings($, repo.top, isFull)
     const opened = await $.ui.open({ id: FINDINGS_PANE, title: `${PRE}last review` })
     const count = `${plural(list.entries.length, 'open finding')} in ${repo.top}`
     return { text: opened.isPlaced ? `${PRE}${count}.` : `${PRE}${count}; widen the terminal to see the pane.` }
@@ -422,12 +589,52 @@ export const register: Register = (on, options) => {
   })
 
   // A workflow runs in the background: show its name until its notification arrives or the run moves on.
+  // Under `visuals: full` a laa engine also gets a card, made before the launch answers because the run's
+  // first agents can start before it does; a refused or failed launch takes the card away again.
   on('tool.call', { tool: 'Workflow' }, async ($, e, next) => {
-    const ran = await next(e)
     const name = (e.name ?? '').replace(/^laa:/, '')
-    if (name && !('deny' in ran) && !ran.isError) await update($, run, r => (r ? { ...r, engine: name } : r))
+    const id = isFull && ENGINES.includes(name) && e.tool_use_id ? e.tool_use_id : null
+    if (id) {
+      try {
+        await update($, engines, cards => startCard(cards, id, name))
+      } catch {
+        // No card: the row draws as the engine draws it.
+      }
+    }
+    const ran = await next(e)
+    const isLaunched = !('deny' in ran) && !ran.isError
+    if (name && isLaunched) await update($, run, r => (r ? { ...r, engine: name } : r))
+    if (id) {
+      try {
+        const result: unknown = isLaunched ? ran.result : null
+        await update($, engines, cards => {
+          const card = cards[id]
+          if (!isLaunched) return dropCard(cards, id)
+          return card ? { ...cards, [id]: launched(card, result) } : cards
+        })
+      } catch {
+        // The card keeps what it had.
+      }
+    }
     return ran
   })
+
+  // Each agent a laa engine starts is counted on the engine's card. An observer: it never refuses a spawn,
+  // touches only workflow agents, and makes no state call of its own (`noteSpawn` batches them).
+  if (isFull) {
+    on('agent.spawn', async ($, e, next) => {
+      if (!e.workflow) return next(e)
+      const started = await next(e)
+      try {
+        if (!('deny' in started && started.deny)) {
+          noteSpawn($, { toolUseId: e.tool_use_id, runId: e.workflow.runId, role: roleOf(e.description || e.name || '') })
+        }
+      } catch {
+        // The card shows one agent fewer.
+      }
+      return started
+    }).catch(($, e, next) => next(e))
+  }
 
   // The model's own rows carry the run's mode, step, gate, and closing lines; a task notification ends the engine.
   on('session.append', async ($, e, next) => {
@@ -435,10 +642,13 @@ export const register: Register = (on, options) => {
     if (e.agentId) return stored
     try {
       if (e.door === 'response' && e.message.type === 'assistant') {
-        await applyProgress($, progressOf(textOf(e.message.content)))
+        const text = textOf(e.message.content)
+        await applyProgress($, progressOf(text), isFull ? text : undefined)
       } else if (e.door === 'delivery' || (e.origin as { kind?: string }).kind === 'task-notification') {
+        const was = isFull ? (await read($, run))?.engine ?? null : null
         // A background task finished (a workflow's notification, folded into a turn or starting its own).
         await update($, run, r => (r?.engine ? { ...r, engine: null } : r))
+        if (isFull) await finishEngine($, textOf(e.message.content), was)
       }
     } catch {
       // A row the band can't read leaves it as it was.
@@ -452,7 +662,14 @@ export const register: Register = (on, options) => {
       void refresh($)
       return next(e)
     }
-    await applyProgress($, progressOf(e.answer))
+    await applyProgress($, progressOf(e.answer), isFull ? e.answer : undefined)
+    if (isFull) {
+      try {
+        await tagTurn($, e.durationMs)
+      } catch {
+        // The turn's closing line stays as the engine draws it.
+      }
+    }
     // A turn ends mid-run only to wait on a text gate or a background workflow; otherwise the run is over,
     // whether it closed with a report or stopped (Stop at a gate, a resume with nothing to resume).
     await update($, run, r => (r && (r.gate || r.engine) ? r : null))
@@ -462,7 +679,7 @@ export const register: Register = (on, options) => {
     void refresh($)
     // The model may have marked findings fixed: keep an open pane current.
     const shown = await read($, findings)
-    if (shown) await loadFindings($, shown.repo)
+    if (shown) await loadFindings($, shown.repo, isFull)
 
     const p = await read($, pipeline)
     if (p && p.hasCommitted && !p.isNudged) void $.clock.after(400, () => void suggestRetro($))
@@ -471,7 +688,7 @@ export const register: Register = (on, options) => {
   })
 
   on('session.end', async ($, e, next) => {
-    if (e.reason === 'clear') await forgetConversation($)
+    if (e.reason === 'clear') await forgetConversation($, isFull)
     return next(e)
   })
 
@@ -483,7 +700,8 @@ export const register: Register = (on, options) => {
     } else if (skill === 'retro') {
       await update($, pipeline, () => null)
     }
-    if (skill && TRACKED.includes(skill)) await update($, run, () => ({ skill, step: null, gate: null, engine: null }))
+    if (skill && TRACKED.includes(skill)) await update($, run, () => ({ skill, step: null, gate: null, engine: null, seen: [] }))
+    if (isFull && skill) void loadTheme($)
     return next(e)
   })
 
@@ -509,17 +727,123 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     const r = await read($, run)
     if (!r) return next(e)
-    const label = `laa:${r.skill}${r.gate ? ' ★' : r.step ? ` ${r.step.n}/${r.step.last}` : ''}`
-    return next({ ...e, props: { ...e.props, modes: [...e.props.modes, label] } })
+    return next({ ...e, props: { ...e.props, modes: [...e.props.modes, runTag(r)] } })
   })
 
+  if (isFull) {
+    // The spinner's line names the run and where it stands, unless the engine set a message of its own
+    // (while compacting, say), which is never hidden.
+    on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
+      let message: string | null = null
+      try {
+        const r = e.props.message === null ? await read($, run) : null
+        if (r) {
+          const cards = r.engine ? Object.values(await read($, engines)) : []
+          const card = cards.filter(c => c.name === r.engine && c.state === 'running').sort((a, b) => b.seq - a.seq)[0]
+          message = spinnerText(r, card ? phaseNow(card) : null)
+          // On the desktop the word is the live step ("Creating notes.md"); keep it beside the run.
+          if (e.surface === 'desktop' && e.props.word !== 'Working') message = `${message} · ${e.props.word}`
+        }
+      } catch {
+        message = null
+      }
+      return message === null ? next(e) : next({ ...e, props: { ...e.props, message } })
+    })
+
+    // While a gate waits on the person, the hint under the prompt says so. The terminal keeps its own line
+    // (the pills stay live) and takes the text as its tail; the desktop draws no tail, so there it joins the hint.
+    on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+      let waiting: string | null = null
+      try {
+        const r = e.props.isWorking ? null : await read($, run)
+        if (r?.gate) waiting = gateText(r)
+      } catch {
+        waiting = null
+      }
+      if (waiting === null) return next(e)
+      if (e.surface === 'terminal') {
+        return next({ ...e, props: { ...e.props, tail: [e.props.tail, waiting].filter(Boolean).join(' · ') } })
+      }
+      return next({ ...e, props: { ...e.props, hint: [e.props.hint, waiting].filter(Boolean).join(' · ') } })
+    })
+
+    // The line that closes a turn names the run the turn belonged to, when one did.
+    on('ui.render', { component: 'TurnDuration' }, async ($, e, next) => {
+      let tag: string | null = null
+      try {
+        tag = turnTagFor(await read($, turnTags), e.props.durationMs)
+      } catch {
+        tag = null
+      }
+      const line = await next(e)
+      if (tag === null) return line
+      const { Box, Text } = $.ui.resolve(e)
+      return (
+        <Box key="laa-turn">
+          {line}
+          <Text dimColor> · {tag}</Text>
+        </Box>
+      )
+    })
+
+    // A laa engine's Workflow row gets its card under it. Whether the row is a laa engine's is read from
+    // the call's own input before any state, so another workflow's row never redraws for laa's.
+    on('ui.render', { component: 'ToolUse', props: { tool: 'Workflow' } }, async ($, e, next) => {
+      let card = null
+      try {
+        const input = e.props.input as { name?: unknown } | null
+        const name = typeof input?.name === 'string' ? input.name.replace(/^laa:/, '') : ''
+        const isDrawable = ENGINES.includes(name) && !e.props.isErrored && !e.props.isInterrupted
+        if (isDrawable) card = (await read($, engines))[e.props.tool_use_id] ?? null
+      } catch {
+        card = null
+      }
+      const row = await next(e)
+      if (!card) return row
+      try {
+        return engineCard($.ui.resolve(e), row, card) ?? row
+      } catch {
+        return row
+      }
+    })
+
+    // A laa closing report is drawn as a framed card. The cheap checks come first: a block with no Next
+    // list is passed on untouched, and state is read only once the block has the shape of a closing report.
+    on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+      if (e.props.isSummary || !e.props.text.includes('**Next**')) return next(e)
+      let card = null
+      try {
+        const closing = closingOf(e.props.text)
+        const recorded = closing ? await read($, closings) : []
+        if (closing && isLaaClosing(closing, recorded)) {
+          let tone: Tone = C.success
+          if (!closing.ok) {
+            // At most one red item on screen: the blocked branch in the band wins, then the newest ✗ report.
+            const [s, allowed] = await Promise.all([read($, status), read($, allowMain)])
+            const isBandRed = Boolean(s?.branch && s.isDefault && !allowed)
+            tone = closing.statusRaw === recorded.at(-1) && !isBandRed ? C.danger : C.warning
+          }
+          card = reportCard($.ui.resolve(e), closing, tone)
+        }
+      } catch {
+        card = null
+      }
+      return card ?? next(e)
+    })
+  }
+
   // The band: at most one alarm (a blocked default branch), what's running or paused, then what's waiting, quietest last.
+  // Under `visuals: full` the stepper is its second row, when there is one to draw.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const s = await read($, status)
+    // Full reads everything it draws from at once; minimal reads as 0.3.0 did.
+    const [s, shownRun, isAllowed, themeName] = isFull
+      ? await Promise.all([read($, status), read($, run), read($, allowMain), read($, theme)])
+      : [await read($, status), null, false, null]
     if (e.props.hasSurvey || !s) return next(e)
-    const r = await read($, run)
-    const allowed = await read($, allowMain)
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const r = isFull ? shownRun : await read($, run)
+    const allowed = isFull ? isAllowed : await read($, allowMain)
+    const els = $.ui.resolve(e)
+    const { Box, Button, Text } = els
     const parts = []
     if (s.branch) {
       if (s.isDefault && !allowed) parts.push(<Text key="branch" color={C.danger}>✗ {s.branch} · edits blocked</Text>)
@@ -579,12 +903,27 @@ export const register: Register = (on, options) => {
         </Box>,
       )
     }
-    return (
+    const row = (
       <Box key="laa">
         <Text dimColor>laa · </Text>
         {parts.flatMap((p, i) => (i === 0 ? [p] : [<Text key={`sep${i}`} dimColor> · </Text>, p]))}
       </Box>
     )
+    if (!isFull) return row
+    try {
+      const steps = stepperRow(els, { run: r, paused: s.paused, columns: e.props.bodyColumns, maxRows: e.props.maxRows, theme: themeName })
+      if (steps) {
+        return (
+          <Box key="laa-band" flexDirection="column">
+            {row}
+            {steps}
+          </Box>
+        )
+      }
+    } catch {
+      // The stepper is an extra: the band's own row always draws.
+    }
+    return row
   })
 
   // /laa-help's row: its own text, with commands in the action color. The state lines come from the text,
@@ -625,8 +964,25 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: LEARNINGS_PANE }, async ($, e) => {
     const list = await read($, learnings)
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const els = $.ui.resolve(e)
+    const { Box, Button, Text } = els
     if (!list) return <Text dimColor>Run /{LEARNINGS_COMMAND} to load this repo's learnings.</Text>
+    if (isFull) {
+      try {
+        const visual = learningsPane(
+          els,
+          { list, filter: (await read($, filters)).learnings, columns: e.props.bodyColumns },
+          {
+            onReject: entry => rejectEntry($, list.repo, entry),
+            onEvolve: () => startEvolve($),
+            onFilter: value => setFilter($, 'learnings', value),
+          },
+        )
+        if (visual) return visual
+      } catch {
+        // The 0.3.0 pane below draws instead.
+      }
+    }
     return (
       <Box flexDirection="column">
         <Text dimColor>{list.repo}</Text>
@@ -651,8 +1007,25 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: FINDINGS_PANE }, async ($, e) => {
     const list = await read($, findings)
-    const { Box, Button, Text } = $.ui.resolve(e)
+    const els = $.ui.resolve(e)
+    const { Box, Button, Text } = els
     if (!list) return <Text dimColor>Run /{FINDINGS_COMMAND} to load the last review.</Text>
+    if (isFull) {
+      try {
+        const visual = findingsPane(
+          els,
+          { list, filter: (await read($, filters)).findings, columns: e.props.bodyColumns },
+          {
+            onFix: chosen => fixFindings($, list.repo, chosen, isFull),
+            onDismiss: finding => dismissFinding($, list.repo, finding, isFull),
+            onFilter: value => setFilter($, 'findings', value),
+          },
+        )
+        if (visual) return visual
+      } catch {
+        // The 0.3.0 pane below draws instead.
+      }
+    }
     const high = list.entries.filter(f => f.tag === 'CRIT' || f.tag === 'HIGH')
     return (
       <Box flexDirection="column">
@@ -667,14 +1040,14 @@ export const register: Register = (on, options) => {
             <Text>{f.title}</Text>
             {f.fix && <Text color={C.action}>→ {f.fix}</Text>}
             <Box>
-              <Button key={`fix${f.index}`} label="Fix" onPress={() => fixFindings($, list.repo, [f])} />
-              <Button key={`dismiss${f.index}`} label="Dismiss" onPress={() => dismissFinding($, list.repo, f)} />
+              <Button key={`fix${f.index}`} label="Fix" onPress={() => fixFindings($, list.repo, [f], isFull)} />
+              <Button key={`dismiss${f.index}`} label="Dismiss" onPress={() => dismissFinding($, list.repo, f, isFull)} />
             </Box>
           </Box>
         ))}
         {high.length > 0 && (
           <Box marginTop={1}>
-            <Button key="fixHigh" label={`Fix all CRIT and HIGH (${high.length})`} variant="primary" hotkey="f" onPress={() => fixFindings($, list.repo, high)} />
+            <Button key="fixHigh" label={`Fix all CRIT and HIGH (${high.length})`} variant="primary" hotkey="f" onPress={() => fixFindings($, list.repo, high, isFull)} />
           </Box>
         )}
       </Box>

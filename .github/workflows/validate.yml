@@ -55,6 +55,9 @@ jobs:
           done
       - name: Test workflow reports
         run: node --test "plugins/laa/tests/*.test.mjs"
+      - name: Check the laa-mods step and phase tables match the skills and workflows
+        # Loads hooks/tables.ts and hooks/git.ts as they are, which needs Node 22.18 or later.
+        run: node --test "plugins/laa-mods/tests/drift/*.test.mjs"
       - name: Check /laa-help lists every laa skill
         run: |
           for d in plugins/laa/skills/*/; do

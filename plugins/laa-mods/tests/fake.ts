@@ -17,6 +17,12 @@ export type Fake = {
   cwd?: string
   // Runs inside every tool call the plugin lets through, before the tool answers: what a test reads mid-call.
   duringTool?: ($: EngineInterface, e: { tool: string }) => Promise<void>
+  // What a tool the plugin lets through answers, by the tool's name; 'ran' unless given.
+  results?: Record<string, unknown>
+  // The person's theme, as the settings menu lists it; with none the menu can't be read.
+  theme?: string
+  // Sizes in bytes of files too large to write out in a test, by their path relative to the repo.
+  sizes?: Record<string, number>
 }
 
 export const ROOT = 'C:/r'
@@ -51,8 +57,28 @@ export function fakeRepo(on: On, f: Fake = {}) {
     // What a tool the plugin let through would have written.
     setFile: (path: string, text: string) => void texts.set(`${ROOT}/${path}`, text),
     toasts: [] as string[],
+    // Every path the plugin read or asked the size of, in order, relative to the repo where it is inside it.
+    reads: [] as string[],
+    stats: [] as string[],
   }
-  on('fs.read', ($, e) => ({ value: texts.get(norm(e.path)) ?? '' }))
+  const relative = (path: string) => (norm(path).startsWith(`${ROOT}/`) ? norm(path).slice(ROOT.length + 1) : norm(path))
+  on('fs.read', ($, e) => {
+    seen.reads.push(relative(e.path))
+    return { value: texts.get(norm(e.path)) ?? '' }
+  })
+  // A file's size and age; a path that is no file is left to the kit, which rejects it as a missing path is rejected.
+  on('fs.stat', ($, e, next) => {
+    seen.stats.push(relative(e.path))
+    const text = texts.get(norm(e.path))
+    if (text === undefined) return next(e)
+    return { value: { kind: 'file' as const, size: f.sizes?.[relative(e.path)] ?? text.length, mtimeMs: 1, isLink: false } }
+  })
+  if (f.theme !== undefined) {
+    const theme = f.theme
+    on('config.list', () => ({
+      value: [{ key: 'theme', label: 'Theme', kind: 'choice' as const, value: theme, provider: { plugin: 'engine', tier: 'core' as const }, isLocked: false }],
+    }))
+  }
   on('fs.write', ($, e) => {
     texts.set(norm(e.path), e.text)
     return { value: undefined }
@@ -78,7 +104,7 @@ export function fakeRepo(on: On, f: Fake = {}) {
   // The tool itself: reached only when the plugin lets the call through.
   on('tool.call', async ($, e) => {
     await f.duringTool?.($, e)
-    return { result: 'ran' as never }
+    return { result: (f.results?.[e.tool] ?? 'ran') as never }
   })
   return seen
 }
@@ -120,3 +146,110 @@ export const turnEnd = (answer: string, extra: { agentId?: string; isAborted?: b
   reason: 'answer' as const,
   ...extra,
 })
+
+// What each site hands a render hook, as the engine does on a 120-column terminal with nothing going on.
+export const BAND = {
+  plugin: 'laa-mods',
+  component: 'AbovePrompt' as const,
+  props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 120, scroll: { offset: 0, bodyRows: 4 }, view: {} },
+}
+export const FOOTER = { plugin: 'laa-mods', component: 'SessionMode' as const, props: { modes: ['auto-accept'] } }
+const pane = (requestId: string, title: string) => ({
+  plugin: 'laa-mods',
+  component: 'Pane' as const,
+  requestId,
+  props: { title, bodyColumns: 80, isFocused: false, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} },
+})
+export const PANE = { findings: pane('laa-findings', 'laa · last review'), learnings: pane('laa-learnings', 'laa · open learnings') }
+export const SPINNER = {
+  plugin: 'laa-mods',
+  component: 'Spinner' as const,
+  props: { word: 'Working', message: null as string | null, suffix: '…', mode: 'responding' as const },
+}
+export const HINT = {
+  plugin: 'laa-mods',
+  component: 'PromptHint' as const,
+  props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
+}
+export const TURN = { plugin: 'laa-mods', component: 'TurnDuration' as const, props: { word: 'Baked', durationMs: 1000 } }
+
+// The surfaces each site is raised on.
+export const BAND_SURFACES = ['terminal', 'desktop'] as const
+export const ALL_SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
+
+// A laa skill's prompt as the engine expands it.
+export const skill = (name: string) => ({ skill: `laa:${name}`, text: `# /laa:${name}\n\nBug: something\n` })
+
+// Invented ids of one engine launch: the Workflow call, the background task, and the run.
+export const WF = { toolUseId: 'toolu_test1', taskId: 'task_test1', runId: 'wf_test1' }
+
+// What the Workflow tool answers a launch with; a test passes it as `results: { Workflow: WF_LAUNCHED }`.
+export const WF_LAUNCHED = { status: 'async_launched' as const, taskId: WF.taskId, runId: WF.runId, workflowName: 'investigate' }
+
+// The model launching a workflow.
+export const wfCall = (name = 'laa:investigate', tool_use_id = WF.toolUseId) =>
+  ({ tool: 'Workflow' as const, name, args: { bug: 'x' }, tool_use_id })
+
+// A workflow's script starting one agent, by the agent's label. `ids` overrides which call and run it names.
+export const spawnWf = (label: string, ids: { toolUseId?: string; runId?: string; agentIndex?: number } = {}) => ({
+  tool_use_id: ids.toolUseId ?? WF.toolUseId,
+  prompt: 'Do the task.',
+  description: label,
+  subagentType: 'general-purpose',
+  provider: { plugin: 'engine', tier: 'core' as const },
+  parentModel: 'claude-test',
+  background: true,
+  fork: false,
+  workflow: { runId: ids.runId ?? WF.runId, agentIndex: ids.agentIndex ?? 1 },
+})
+
+// The first line of the report in the notification below, as an engine card shows it.
+export const WF_REPORT = '✓ 2 of 3 root causes survived verification · 5 angles'
+
+// What stands between a notification's tags for the launch above: it completed, with a workflow result that carries a report.
+export const WF_DONE = [
+  `<task-id>${WF.taskId}</task-id>`,
+  `<tool-use-id>${WF.toolUseId}</tool-use-id>`,
+  '<status>completed</status>',
+  '<summary>Workflow "investigate" completed</summary>',
+  `<result>${JSON.stringify({ report: '**✓ 2 of 3 root causes survived verification** · 5 angles\n- ✓ `a.go:1` nil address' })}</result>`,
+].join('\n')
+
+// The row a finished background task adds to the conversation, with `body` between its tags.
+export const notification = (body = WF_DONE, uuid = 'row-n1') => ({
+  message: {
+    type: 'user' as const,
+    role: 'user' as const,
+    isMeta: true as const,
+    content: [{ type: 'text' as const, text: `<task-notification>\n${body}\n</task-notification>` }],
+  },
+  door: 'delivery' as const,
+  origin: { kind: 'engine' } as never,
+  uuid,
+})
+
+// A drawn tree, or one node of it.
+export type Drawn = string | { type: string; props?: Record<string, unknown>; children?: readonly unknown[] }
+
+const attrsOf = (props: Record<string, unknown>) =>
+  Object.keys(props).sort().map(k => (props[k] === true ? ` ${k}` : ` ${k}=${JSON.stringify(props[k])}`)).join('')
+
+// A drawn tree as indented tags, for a test to compare whole: every prop and every child string as handed
+// over, in order. The handle a Button's handler lives under is left out: it differs from run to run.
+export const show = (node: Drawn, depth = 0): string => {
+  const pad = '  '.repeat(depth)
+  if (typeof node === 'string') return pad + JSON.stringify(node)
+  const open = `${pad}<${node.type}${attrsOf(node.props ?? {})}`
+  const children = (node.children ?? []) as Drawn[]
+  if (children.length === 0) return `${open} />`
+  if (children.every(c => typeof c === 'string')) return `${open}>${children.map(c => JSON.stringify(c)).join(' ')}</${node.type}>`
+  return [`${open}>`, ...children.map(c => show(c, depth + 1)), `${pad}</${node.type}>`].join('\n')
+}
+
+// A tree as a test writes it down, to compare with `show`: a template literal, without its first line
+// break, its last, and its indentation.
+export const golden = (text: string) => {
+  const lines = text.replace(/^\n/, '').replace(/\n\s*$/, '').split('\n')
+  const indent = Math.min(...lines.map(l => /^ */.exec(l)?.[0].length ?? 0))
+  return lines.map(l => l.slice(indent)).join('\n')
+}

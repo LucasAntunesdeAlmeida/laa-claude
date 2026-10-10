@@ -1,60 +1,40 @@
-import { describe, expect, test } from 'claude-code/testing'
-import type { Engine } from 'claude-code/testing'
+import { describe as group, expect, test as run } from 'claude-code/testing'
+import type { Engine, TestBody } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { bash, commandRun, fakeRepo, reply } from './fake'
+import { ALL_SURFACES, BAND, BAND_SURFACES, bash, commandRun, fakeRepo, FOOTER, golden, PANE, reply, show, skill } from './fake'
 import type { Fake } from './fake'
 
 // The 0.3.0 drawings, pinned: the band, the footer, and both panes, as the plugin hands them to each surface.
 // Every tree here was captured from 0.3.0 before the visuals work began; a change to one is a change to
 // what `visuals: minimal` promises to keep.
+//
+// Each group runs under `visuals: minimal`, where it must hold for good. The groups named in STUBBED also
+// run under `visuals: full`, which draws the same while the drawing a group covers is still a stub: the slice
+// that starts drawing it takes its name out of the list and pins the new drawing in its own test file.
+const STUBBED = ['0.3.0 band', '0.3.0 footer', '0.3.0 findings pane', '0.3.0 learnings pane']
 
-const BAND = {
-  plugin: 'laa-mods',
-  component: 'AbovePrompt' as const,
-  props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 120, scroll: { offset: 0, bodyRows: 4 }, view: {} },
+const MODES = [
+  { name: 'minimal', options: { visuals: 'minimal' } },
+  { name: 'full', options: { visuals: 'full' } },
+] as const
+
+let mode: (typeof MODES)[number] = MODES[0]
+
+// `describe` and `test` as the cases below use them: each group once per mode it is pinned in, each test
+// with that mode as the plugin's setting. A group's body runs while it is declared, so `mode` is the group's.
+const describe = (name: string, body: () => void) => {
+  for (const m of MODES) {
+    if (m.name === 'full' && !STUBBED.includes(name)) continue
+    mode = m
+    group(`${name} · visuals: ${m.name}`, body)
+  }
 }
-const FOOTER = { plugin: 'laa-mods', component: 'SessionMode' as const, props: { modes: ['auto-accept'] } }
-const pane = (requestId: string, title: string) => ({
-  plugin: 'laa-mods',
-  component: 'Pane' as const,
-  requestId,
-  props: { title, bodyColumns: 80, isFocused: false, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} },
-})
-const FINDINGS_PANE = pane('laa-findings', 'laa · last review')
-const LEARNINGS_PANE = pane('laa-learnings', 'laa · open learnings')
-
-const BAND_SURFACES = ['terminal', 'desktop'] as const
-const PANE_SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
-
-type Node = string | { type: string; props?: Record<string, unknown>; children?: readonly unknown[] }
-
-const attrsOf = (props: Record<string, unknown>) =>
-  Object.keys(props).sort().map(k => (props[k] === true ? ` ${k}` : ` ${k}=${JSON.stringify(props[k])}`)).join('')
-
-// A drawn tree as indented tags: every prop and every child string as handed over, in order. The handle a
-// Button's handler lives under is left out: it differs from run to run.
-const show = (node: Node, depth = 0): string => {
-  const pad = '  '.repeat(depth)
-  if (typeof node === 'string') return pad + JSON.stringify(node)
-  const open = `${pad}<${node.type}${attrsOf(node.props ?? {})}`
-  const children = (node.children ?? []) as Node[]
-  if (children.length === 0) return `${open} />`
-  if (children.every(c => typeof c === 'string')) return `${open}>${children.map(c => JSON.stringify(c)).join(' ')}</${node.type}>`
-  return [`${open}>`, ...children.map(c => show(c, depth + 1)), `${pad}</${node.type}>`].join('\n')
-}
-
-// A golden as written below: a template literal, without its first line break, its last, and its indentation.
-const golden = (text: string) => {
-  const lines = text.replace(/^\n/, '').replace(/\n\s*$/, '').split('\n')
-  const indent = Math.min(...lines.map(l => /^ */.exec(l)?.[0].length ?? 0))
-  return lines.map(l => l.slice(indent)).join('\n')
-}
+const test = (name: string, body: TestBody) => run(name, { options: mode.options }, body)
 
 const ENGINE_OWN = '<Box key="engine" />'
 
 const open = (n: number) => Array.from({ length: n }, (_, i) => `## entry ${i}\n- status: open`).join('\n')
-const skill = (name: string) => ({ skill: `laa:${name}`, text: `# /laa:${name}\n\nBug: something\n` })
 
 // A repo in the given state with the engine's own band, footer, and skill expansion beneath the plugin, and one
 // git command so the plugin reads the repo. Returns the footer's labels as each draw handed them to the engine.
@@ -75,16 +55,16 @@ async function world($: Engine, on: On, f: Fake) {
 async function expectBand($: Engine, want: string) {
   for (const surface of BAND_SURFACES) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    expect(show(await ui.drawn() as Node), surface).toBe(golden(want))
+    expect(show(await ui.drawn()), surface).toBe(golden(want))
     await ui.unmount()
   }
 }
 
 // A pane on all four surfaces: one tree for all.
-async function expectPane($: Engine, target: typeof FINDINGS_PANE, want: string) {
-  for (const surface of PANE_SURFACES) {
+async function expectPane($: Engine, target: typeof PANE.findings, want: string) {
+  for (const surface of ALL_SURFACES) {
     const ui = await $.ui.mount({ ...target, surface })
-    expect(show(await ui.drawn() as Node), surface).toBe(golden(want))
+    expect(show(await ui.drawn()), surface).toBe(golden(want))
     await ui.unmount()
   }
 }
@@ -157,7 +137,7 @@ describe('0.3.0 band', () => {
     await world($, on, { branch: 'feat/export', mapAge: 1 })
     for (const surface of BAND_SURFACES) {
       const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true }, surface })
-      expect(show(await ui.drawn() as Node), surface).toBe(ENGINE_OWN)
+      expect(show(await ui.drawn()), surface).toBe(ENGINE_OWN)
       await ui.unmount()
     }
   })
@@ -324,7 +304,7 @@ describe('0.3.0 footer', () => {
     const footer = async () => {
       for (const surface of BAND_SURFACES) {
         const ui = await $.ui.mount({ ...FOOTER, surface })
-        expect(show(await ui.drawn() as Node), surface).toBe(ENGINE_OWN)
+        expect(show(await ui.drawn()), surface).toBe(ENGINE_OWN)
         await ui.unmount()
       }
       expect(footers[footers.length - 1]).toEqual(footers[footers.length - 2])
@@ -343,7 +323,7 @@ describe('0.3.0 footer', () => {
 describe('0.3.0 findings pane', () => {
   test('before it is loaded', async ($, on) => {
     await world($, on, { branch: 'feat/export' })
-    await expectPane($, FINDINGS_PANE, `
+    await expectPane($, PANE.findings, `
       <Text dimColor>"Run /" "laa-findings" " to load the last review."</Text>
     `)
   })
@@ -351,7 +331,7 @@ describe('0.3.0 findings pane', () => {
   test('the open findings, each with its buttons', async ($, on) => {
     await world($, on, { branch: 'feat/export', files: { '.claude/laa/local/last-review.md': REVIEW } })
     await $.command.run(commandRun('laa-findings'))
-    await expectPane($, FINDINGS_PANE, `
+    await expectPane($, PANE.findings, `
       <Box flexDirection="column">
         <Text dimColor>"C:/r"</Text>
         <Box flexDirection="column" key="finding0" marginTop=1>
@@ -412,7 +392,7 @@ describe('0.3.0 findings pane', () => {
   test('a review with nothing open', async ($, on) => {
     await world($, on, { branch: 'feat/export', files: { '.claude/laa/local/last-review.md': '# Review\n' } })
     await $.command.run(commandRun('laa-findings'))
-    await expectPane($, FINDINGS_PANE, `
+    await expectPane($, PANE.findings, `
       <Box flexDirection="column">
         <Text dimColor>"C:/r"</Text>
         <Text>"No open findings. Nothing to fix."</Text>
@@ -424,7 +404,7 @@ describe('0.3.0 findings pane', () => {
 describe('0.3.0 learnings pane', () => {
   test('before it is loaded', async ($, on) => {
     await world($, on, { branch: 'feat/export' })
-    await expectPane($, LEARNINGS_PANE, `
+    await expectPane($, PANE.learnings, `
       <Text dimColor>"Run /" "laa-learnings" " to load this repo's learnings."</Text>
     `)
   })
@@ -432,7 +412,7 @@ describe('0.3.0 learnings pane', () => {
   test('the open learnings, each with its button', async ($, on) => {
     await world($, on, { branch: 'feat/export', learnings: LEARNINGS })
     await $.command.run(commandRun('laa-learnings'))
-    await expectPane($, LEARNINGS_PANE, `
+    await expectPane($, PANE.learnings, `
       <Box flexDirection="column">
         <Text dimColor>"C:/r"</Text>
         <Box flexDirection="column" key="entry0" marginTop=1>
@@ -459,7 +439,7 @@ describe('0.3.0 learnings pane', () => {
   test('nothing open', async ($, on) => {
     await world($, on, { branch: 'feat/export' })
     await $.command.run(commandRun('laa-learnings'))
-    await expectPane($, LEARNINGS_PANE, `
+    await expectPane($, PANE.learnings, `
       <Box flexDirection="column">
         <Text dimColor>"C:/r"</Text>
         <Text>"No open learnings. Nothing to evolve."</Text>
