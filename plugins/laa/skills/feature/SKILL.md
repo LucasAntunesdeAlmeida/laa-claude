@@ -49,6 +49,7 @@ Present the blueprint, the ranking, and the deep-dives (data model, API, threat 
 ## 5. Plan slices
 Turn the blueprint's build sequence into work items: `{ id, title, spec, files, acceptance }`.
 - Items that run in parallel **must not touch the same files or change a shared contract**. Put shared foundations (schema migration, shared types, contracts) in a first sequential slice.
+- For every stubbed or shared contract, the spec states its semantics: what it returns once real, and when a counter, event, or flag changes. Parallel items code and test against that, not against the stub.
 - Show the plan (a numbered list, marking which run in parallel). ★ **Gate: user approves the plan**, as a gate card, before any code is written.
 
 ## 6. Implement
