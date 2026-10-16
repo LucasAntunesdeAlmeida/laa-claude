@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { allowMainRun, bash, denied, edit, fakeRepo, notebook, powershell, ROOT, write } from './fake'
+import { allowMainRun, bash, denied, edit, fakeRepo, notebook, powershell, POSIX_ROOT, ROOT, write } from './fake'
 
 describe('default-branch guard', () => {
   test('blocks an edit on main in an adopted repo', async ($, on) => {
@@ -238,5 +238,37 @@ describe('default-branch guard', () => {
     expect(denied(await $.tool.call(edit(`${ROOT}/src/a.go`)))).toBe(false)
     await $.command.run(allowMainRun)
     expect(denied(await $.tool.call(edit(`${ROOT}/src/a.go`)))).toBe(true)
+  })
+})
+
+// Linux and macOS: the repo, the session and every path in POSIX spelling, with no drive letter anywhere.
+describe('default-branch guard on POSIX paths', () => {
+  test('blocks an edit and a commit on main, and lets a task branch through', async ($, on) => {
+    fakeRepo(on, { root: POSIX_ROOT })
+    expect(denied(await $.tool.call(edit(`${POSIX_ROOT}/src/a.go`)))).toBe(true)
+    expect(denied(await $.tool.call(write('src/b.go')))).toBe(true)
+    expect(denied(await $.tool.call(bash('git commit -m x')))).toBe(true)
+    expect(denied(await $.tool.call(edit(`${POSIX_ROOT}/.claude/laa/local/runs/main.md`)))).toBe(false)
+  })
+
+  test('allows edits on a task branch', async ($, on) => {
+    fakeRepo(on, { root: POSIX_ROOT, branch: 'feat/x' })
+    expect(denied(await $.tool.call(edit(`${POSIX_ROOT}/src/a.go`)))).toBe(false)
+    expect(denied(await $.tool.call(bash('git commit -m x')))).toBe(false)
+  })
+
+  test('takes the commit directory from cd, -C, and a subshell', async ($, on) => {
+    fakeRepo(on, { root: POSIX_ROOT, cwd: '/home/me/other' })
+    expect(denied(await $.tool.call(bash('git commit -m x')))).toBe(false)
+    expect(denied(await $.tool.call(bash(`cd ${POSIX_ROOT} && git commit -m x`)))).toBe(true)
+    expect(denied(await $.tool.call(bash(`git -C ${POSIX_ROOT} commit -m x`)))).toBe(true)
+    expect(denied(await $.tool.call(bash(`cd ../r && git commit -m x`)))).toBe(true)
+    expect(denied(await $.tool.call(bash(`(cd ${POSIX_ROOT} && make); git commit -m x`)))).toBe(false)
+  })
+
+  test('leaves a path outside the repo alone and never maps it to a drive', async ($, on) => {
+    fakeRepo(on, { root: POSIX_ROOT })
+    expect(denied(await $.tool.call(edit('/tmp/scratch.txt')))).toBe(false)
+    expect(denied(await $.tool.call(edit('/home/me/other/a.go')))).toBe(false)
   })
 })
