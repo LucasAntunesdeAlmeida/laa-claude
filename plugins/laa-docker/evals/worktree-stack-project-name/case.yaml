@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: worktree-stack-project-name
+context:
+  scaffold_script: fixture.sh
