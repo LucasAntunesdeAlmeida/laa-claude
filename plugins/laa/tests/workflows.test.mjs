@@ -100,7 +100,7 @@ test('review-panel keeps an uncertain single vote out of the confirmed findings'
   assert.equal(result.unverified.length, 1)
   assert.equal(result.refutedCount, 0)
   assert.equal(result.report, [
-    '**✓ No findings** · 1 unverified · 0 refuted · correctness, completeness, security, performance',
+    '**▲ No confirmed findings** · 1 unverified · 0 refuted · correctness, completeness, security, performance',
     '',
     "**▲ 1 unverified** · verifiers couldn't settle these; check them by hand",
     '- `HIGH` `a.go:1` Nil map write → init the map · 1 uncertain',
@@ -118,7 +118,7 @@ test('review-panel reports a finding whose verifiers errored as unverified, not 
   assert.equal(result.refutedCount, 0)
   assert.equal(result.unverified.length, 1)
   assert.equal(result.unverified[0].errored, 2)
-  assert.match(result.report, /^\*\*✓ No findings\*\* · 1 unverified · 0 refuted/)
+  assert.match(result.report, /^\*\*▲ No confirmed findings\*\* · 1 unverified · 0 refuted/)
   assert.match(result.report, /- `CRIT` `api\/auth\.go:12` Tenant check missing → check the tenant id · 2 verifier errors$/)
 })
 
@@ -172,12 +172,43 @@ test('review-panel merges the same issue from two dimensions and keeps the most 
   assert.deepEqual(result.confirmed[0].dimensions, ['completeness', 'correctness'])
 })
 
-test('review-panel tells reviewers to skip pre-existing and linter-level issues', async () => {
+test('review-panel tells reviewers to skip pre-existing and style-only issues, never real defects', async () => {
   const { calls } = await run('review-panel', { base: 'main' }, [['review:', { findings: [] }]])
   const completeness = calls.find(c => c.opts.label === 'review:completeness')
   assert.match(completeness.prompt, /pre-existing/)
-  assert.match(completeness.prompt, /linter/)
+  assert.match(completeness.prompt, /style and formatting/)
+  assert.match(completeness.prompt, /CI already enforces/)
+  assert.match(completeness.prompt, /ever covers a correctness, security, or performance defect/)
+  assert.doesNotMatch(completeness.prompt, /anything a linter/)
   assert.match(completeness.prompt, /CLAUDE\.md/)
+})
+
+test('review-panel merges a confirmed and an unverified copy of the same issue as confirmed', async () => {
+  const findings = {
+    correctness: [{ severity: 'medium', file: 'svc/order.go', line: 40, title: 'Order total ignores discounts', scenario: 's', fix: 'apply discounts' }],
+    completeness: [{ severity: 'high', file: 'svc/order.go', line: 41, title: 'Order total ignores discounts.', scenario: 's', fix: 'apply discounts' }],
+  }
+  const { result } = await run('review-panel', { base: 'main' }, [
+    ['review:', (_, opts) => ({ findings: findings[opts.label.slice('review:'.length)] || [] })],
+    ['verify:order.go:40', { verdict: 'confirmed', evidence: 'e' }],
+    ['verify:order.go:41', { verdict: 'uncertain', evidence: 'e' }],
+  ])
+  assert.deepEqual(result.unverified, [])
+  assert.equal(result.confirmed.length, 1)
+  assert.equal(result.confirmed[0].status, 'confirmed')
+  assert.equal(result.confirmed[0].severity, 'high')
+  assert.deepEqual(result.confirmed[0].dimensions, ['correctness', 'completeness'])
+  assert.match(result.report, /^\*\*1 finding\*\* · 0 refuted/)
+})
+
+test('review-panel keeps same-titled findings apart when their lines are far apart', async () => {
+  const same = { severity: 'medium', file: 'svc/order.go', title: 'Unchecked error', scenario: 's', fix: 'return it' }
+  const findings = { correctness: [{ ...same, line: 10 }], completeness: [{ ...same, line: 30 }] }
+  const { result } = await run('review-panel', { base: 'main' }, [
+    ['review:', (_, opts) => ({ findings: findings[opts.label.slice('review:'.length)] || [] })],
+    ['verify:', { verdict: 'confirmed', evidence: 'e' }],
+  ])
+  assert.equal(result.confirmed.length, 2)
 })
 
 test('investigate reports a root cause whose verifiers errored as unverified, not refuted', async () => {

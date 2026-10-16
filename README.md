@@ -105,7 +105,7 @@ Per-project state lives in `<project>/.claude/laa/`:
 - `assets.md`: an inventory of generated assets and why each one exists
 - `local/`: state that is never committed (it ignores itself): `runs/<branch>.md`, the journal `/laa:resume` reads, and `last-review.md`, the findings the `/laa-findings` pane lists
 
-Several agents (`explorer`, `reviewer`, `investigator`, `security-reviewer`) also keep persistent **local memory** across sessions, in `<project>/.claude/agent-memory-local/<agent>/`. It's per developer and never committed (`/laa:adopt` adds it to `.gitignore`), so parallel agents never write tracked files, on the default branch or anywhere else. `/laa:evolve` reads it for repeated patterns.
+Several agents (`explorer`, `reviewer`, `investigator`, `security-reviewer`) also keep persistent **local memory** across sessions, in `<project>/.claude/agent-memory-local/laa-<agent>/` (Claude Code prefixes a plugin agent's memory directory with the plugin name). It's per developer and never committed (the agents drop a `.gitignore` there on first write, and `/laa:adopt` adds the path to `.gitignore`), so parallel agents never write tracked files, on the default branch or anywhere else. `/laa:evolve` reads it for repeated patterns.
 
 ## Code intelligence (graphify)
 

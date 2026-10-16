@@ -35,6 +35,6 @@ if ! printf '%s' "$prompt" | grep -Eiq "$pattern"; then
   printf '%s' "$prompt" | grep -Eiq "$benign" && exit 0
 fi
 
-msg="The user's message may be a correction. Handle it first. Then, if it reveals a durable preference, convention, or repo fact (not a one-off), log it following the laa:retro skill's Git rule: on a work branch, append one entry to .claude/laa/learnings.md in the laa:retro format (scope, kind: correction, target, signal quoting the user, proposal, status: open) and say so in one line. On the default branch, write nothing: name the learning in one line and suggest /laa:retro."
+msg="The user's message may be a correction. Handle it first. Then, if it reveals a durable preference, convention, or repo fact (not a one-off), log it: on a work branch, append one entry to .claude/laa/learnings.md in the laa:retro format (scope, kind: correction, target, signal quoting the user, proposal, status: open) and say so in one line. On the default branch, write nothing: name the learning in one line and suggest /laa:retro."
 esc=$(printf '%s' "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')
 printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$esc"

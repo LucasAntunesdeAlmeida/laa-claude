@@ -7,7 +7,7 @@ max_turns: 8
 allowed_tools: [Read, Glob, Grep, Agent]
 ---
 
-ask the laa:reviewer agent this and relay its answer, don't review anything yourself: "Review this change. There's no shell, so here is the diff against main: it adds ApplyDiscount to internal/billing/invoice.go and TestApplyDiscount to the new internal/billing/invoice_test.go (read both files). Nothing else changed; the rest of invoice.go is unchanged from main. The added function:
+ask the laa:reviewer agent this and relay its answer, don't review anything yourself: "Review this change. There's no shell, so here is the diff against main: it adds ApplyDiscount to internal/billing/invoice.go and TestApplyDiscount to the new internal/billing/invoice_test.go (read both files). The added function:
 
 +// ApplyDiscount returns the total after a percentage discount, rounded down. pct must be 0..100.
 +func ApplyDiscount(totalCents int64, pct int) (int64, error) {

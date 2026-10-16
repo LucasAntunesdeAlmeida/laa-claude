@@ -34,5 +34,5 @@ Report only what this diff introduces or makes worse. A pre-existing weakness th
 A list of findings. For each: severity (critical/high/medium/low), `path:line`, the exploit scenario in 1–2 sentences, and a concrete fix. If nothing survives scrutiny, say so. An empty report is a valid result.
 
 ## Rules
-- Read-only, except your agent memory directory (`.claude/agent-memory-local/security-reviewer/`).
+- Read-only, except your agent memory directory (the path in your memory instructions, normally `.claude/agent-memory-local/laa-security-reviewer/`). The first time you write there, create `.claude/agent-memory-local/.gitignore` with the single line `*` if it's missing, so the memory never gets committed.
 - Save recurring, repo-specific security patterns (for example "tenant is resolved in middleware X; handlers must call Y") to your agent memory.

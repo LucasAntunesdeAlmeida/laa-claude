@@ -27,7 +27,7 @@ Commit only on work branches. Don't merge into the default branch, push, or open
 ## 1. Gather
 - `.claude/laa/learnings.md`: the entries with `status: open`.
 - `.claude/laa/assets.md`: the repo-local assets and why they exist.
-- If they're available, the local memories of laa agents for this project, in `.claude/agent-memory-local/<agent>/` (explorer, reviewer, investigator, security-reviewer). Look for patterns noted there repeatedly. Older setups may still have `.claude/agent-memory/<agent>/`; read it too.
+- If they're available, the local memories of laa agents for this project, in `.claude/agent-memory-local/laa-<agent>/` (`laa-explorer`, `laa-reviewer`, `laa-investigator`, `laa-security-reviewer`). Look for patterns noted there repeatedly. Older setups may still have `.claude/agent-memory/laa-<agent>/`; read it too.
 
 ## 2. Cluster and prioritize
 Group the learnings that point at the same target. Rank them by frequency × impact. Drop one-off noise: a single occurrence of a minor preference is not a rule yet. Leave it open.

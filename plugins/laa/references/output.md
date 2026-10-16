@@ -54,7 +54,7 @@ One list item per finding, most severe first. The tags are `CRIT`, `HIGH`, `MED`
 - `HIGH` `internal/orders/cancel.go:42` refund issued twice on retried webhooks → check the idempotency key first
 - `MED` `internal/orders/list.go:77` unbounded query on the orders table → page with a cursor
 ```
-Findings the verifiers couldn't settle (uncertain votes or verifier errors) go after the confirmed ones, under `**▲ <u> unverified**`, with the same item shape plus why. Count them as `<u> unverified` in the first line, before the refuted count, and never as refuted.
+Findings the verifiers couldn't settle (uncertain votes or verifier errors) go after the confirmed ones, under `**▲ <u> unverified**`, with the same item shape plus why. Count them as `<u> unverified` in the first line, before the refuted count, and never as refuted. With no confirmed findings but some unverified, the first line is `**▲ No confirmed findings** · <u> unverified · <m> refuted · <reviewers>`; `**✓ No findings**` is only for when nothing is unverified either.
 When a workflow returns a `report`, print it as is. Add **Next** after it only when it ends the run: the closing step, or the workflow typed on its own.
 
 ## Style

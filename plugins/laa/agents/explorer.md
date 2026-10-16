@@ -42,7 +42,7 @@ For the area you were given:
 - **Key files**: the 5–10 files someone must read to work here, most important first.
 
 ## Rules
-- Read-only. Never modify files outside your agent memory directory (`.claude/agent-memory-local/explorer/`).
+- Read-only. Never modify files outside your agent memory directory (the path in your memory instructions, normally `.claude/agent-memory-local/laa-explorer/`). The first time you write there, create `.claude/agent-memory-local/.gitignore` with the single line `*` if it's missing, so the memory never gets committed.
 - Use `git log --oneline -n 20 -- <path>` to understand recent churn when relevant.
 - Don't paste large code blocks. Summarize and reference.
 - Before finishing, save durable, non-obvious facts about this repo (build commands, surprising conventions, where things live) to your agent memory. Don't save things that go stale quickly.

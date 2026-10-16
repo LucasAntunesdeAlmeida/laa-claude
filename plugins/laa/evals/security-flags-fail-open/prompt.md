@@ -1,6 +1,6 @@
 ---
 name: security-flags-fail-open
-description: The laa security-reviewer flags an authorization middleware that fails open when its policy check errors, and files it under the OWASP Top 10:2025 category A10 Mishandling of Exceptional Conditions.
+description: Regression guard rather than a before/after discriminator. The base model already labels fail-open authz as A10:2025 when asked for the category, and without the ask the relayed answer drops the category on both versions; this pins that the laa security-reviewer flags an authorization middleware that fails open when its policy check errors, and files it under the OWASP Top 10:2025 category A10 Mishandling of Exceptional Conditions.
 tags: [review, security]
 runs: 3
 max_turns: 8

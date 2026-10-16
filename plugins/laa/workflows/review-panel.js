@@ -87,8 +87,10 @@ const DIMENSIONS = [
 
 // What every reviewer leaves out, so the panel reports signal only.
 const SKIP = 'Report only issues this diff introduces or makes worse. Skip pre-existing issues in code the diff ' +
-  "doesn't change, anything a linter, formatter, or compiler would catch, pedantic nitpicks a senior engineer wouldn't raise, " +
-  'and generic complaints ("add more tests", "consider security") not tied to a concrete failure in this change.'
+  "doesn't change, pure style and formatting issues, checks this repo's own CI already enforces (its configured linters, " +
+  "formatter, type checker), pedantic nitpicks a senior engineer wouldn't raise, and generic complaints (\"add more tests\", " +
+  '"consider security") not tied to a concrete failure in this change. None of these skips ever covers a correctness, ' +
+  'security, or performance defect: report a real bug even when some linter could also flag it.'
 
 // Verdicts fall in three buckets. Confirmed or refuted needs at least half of the requested votes and more
 // votes than the opposite verdict. Everything else (uncertain verdicts, verifier errors that return null,
@@ -125,15 +127,21 @@ const results = await pipeline(DIMENSIONS,
   })
 
 const order = { critical: 0, high: 1, medium: 2, low: 3 }
-// Two dimensions can still report the very same issue (same file, line, and title). Keep the most severe
-// copy and list every dimension that found it. Anything that differs stays a separate finding.
+const rank = { confirmed: 0, unverified: 1, refuted: 2 }
+// Two dimensions can still report the very same issue: same file, a line within 2, and the same title once
+// case and punctuation are ignored. Their verifiers may disagree, so merge regardless of status: keep the best
+// status (confirmed > unverified > refuted), raise to the highest severity, and list every dimension that
+// found it. Anything that differs stays a separate finding.
+const norm = t => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
 const merged = []
-for (const f of results.filter(Boolean).flat().filter(Boolean).sort((a, b) => order[a.severity] - order[b.severity])) {
-  const same = merged.find(m => m.status === f.status && m.file === f.file && m.line === f.line &&
-    m.title.trim().toLowerCase() === f.title.trim().toLowerCase())
-  if (same) same.dimensions.push(f.dimension)
-  else merged.push({ ...f, dimensions: [f.dimension] })
+for (const f of results.filter(Boolean).flat().filter(Boolean)
+  .sort((a, b) => rank[a.status] - rank[b.status] || order[a.severity] - order[b.severity])) {
+  const same = merged.find(m => m.file === f.file && Math.abs(m.line - f.line) <= 2 && norm(m.title) === norm(f.title))
+  if (!same) { merged.push({ ...f, dimensions: [f.dimension] }); continue }
+  same.dimensions.push(f.dimension)
+  if (order[f.severity] < order[same.severity]) same.severity = f.severity
 }
+merged.sort((a, b) => order[a.severity] - order[b.severity])
 const confirmed = merged.filter(f => f.status === 'confirmed')
 const unverified = merged.filter(f => f.status === 'unverified')
 const refutedCount = merged.filter(f => f.status === 'refuted').length
@@ -151,7 +159,7 @@ const counts = `${unverified.length ? `${unverified.length} unverified · ` : ''
 const report = render([
   confirmed.length
     ? `**${confirmed.length} ${confirmed.length === 1 ? 'finding' : 'findings'}** · ${counts}`
-    : `**✓ No findings** · ${counts}`,
+    : unverified.length ? `**▲ No confirmed findings** · ${counts}` : `**✓ No findings** · ${counts}`,
   ...confirmed.map(line),
   ...(unverified.length ? ['', `**▲ ${unverified.length} unverified** · verifiers couldn't settle these; check them by hand`] : []),
   ...unverified.map(f => `${line(f)} · ${why(f)}`),

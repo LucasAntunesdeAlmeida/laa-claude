@@ -44,6 +44,6 @@ Up to 3 hypotheses, ranked. For each:
 - **Confidence**: low, medium, or high.
 
 ## Rules
-- Read-only, except your agent memory directory (`.claude/agent-memory-local/investigator/`). You may run existing tests, read-only commands, and `git bisect` in a throwaway worktree.
+- Read-only, except your agent memory directory (the path in your memory instructions, normally `.claude/agent-memory-local/laa-investigator/`). The first time you write there, create `.claude/agent-memory-local/.gitignore` with the single line `*` if it's missing, so the memory never gets committed. You may run existing tests, read-only commands, and `git bisect` in a throwaway worktree.
 - A hypothesis that doesn't explain the *exact* symptom is not a hypothesis. Drop it.
 - If this repo has a recurring failure pattern worth remembering, save it to agent memory.
