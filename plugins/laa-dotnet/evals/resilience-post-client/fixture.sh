@@ -115,6 +115,5 @@ cat > README.md <<'MD'
 
 Modular monolith: `src/Shop.Api` hosts, `src/Shop.<Domain>` holds each module.
 
-The payment provider's `POST /charges` creates a new charge on every call. It doesn't accept an
-idempotency key.
+The payment provider's `POST /charges` doesn't accept an idempotency key.
 MD

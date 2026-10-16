@@ -1,6 +1,6 @@
 ---
 name: soft-delete-keeps-tenant-filter
-description: An EF Core 10 entity already has a tenant query filter and the user adds soft delete plus a "show deleted" listing. With laa-dotnet, the answer uses named filters (or one combined filter) and lifts only the soft-delete filter, instead of a second HasQueryFilter that overwrites the tenant filter and a plain IgnoreQueryFilters() that leaks other tenants' rows.
+description: Regression guard for the answer content rather than a before/after discriminator. The base model already reaches for EF 10 named filters once it reads the pinned package version, so only the skill-fired grader separates old from new. An EF Core 10 entity already has a tenant query filter and the user adds soft delete plus a "show deleted" listing. With laa-dotnet, the answer names both filters (EF 10 forbids mixing unnamed and named ones) and lifts only the soft-delete filter by name, instead of a second HasQueryFilter that overwrites the tenant filter and a plain IgnoreQueryFilters() that leaks other tenants' rows.
 tags: [dotnet, efcore, multi-tenancy]
 runs: 3
 max_turns: 12

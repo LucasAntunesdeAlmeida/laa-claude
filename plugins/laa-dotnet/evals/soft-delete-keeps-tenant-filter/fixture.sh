@@ -99,7 +99,6 @@ public sealed class InvoiceConfiguration(BillingDbContext context) : IEntityType
         b.Property(i => i.Total).HasPrecision(18, 2);
         b.HasIndex(i => new { i.TenantId, i.Number }).IsUnique();
 
-        // Tenant isolation: every query only sees the current tenant's invoices.
         b.HasQueryFilter(i => i.TenantId == context.TenantId);
     }
 }

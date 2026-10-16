@@ -5,7 +5,7 @@ weight: 1
 
 The workspace is a .NET 10 modular monolith. `src/Shop.Orders` already references
 `Microsoft.Extensions.Http.Resilience` and binds `PaymentsOptions`. The README says the provider's
-`POST /charges` creates a new charge on every call and doesn't accept an idempotency key. The user asked
+`POST /charges` doesn't accept an idempotency key. The user asked
 for a typed client for that POST, its registration in `OrdersModule`, and resilience to transient
 failures, without running anything.
 
@@ -17,7 +17,9 @@ The response passes only if ALL of these hold:
 - Retries can't resend the charge POST: it calls `Retry.DisableForUnsafeHttpMethods()` or
   `Retry.DisableFor(HttpMethod.Post, ...)`, or configures a pipeline with no retry for this call. A bare
   `AddStandardResilienceHandler()` (or one whose options leave retries on for POST) fails this, as does
-  inventing an idempotency key header the README says the provider doesn't support.
+  code that sends an idempotency key header and keeps retries on for POST because of it (the README says
+  the provider doesn't support one). Mentioning idempotency keys only as a conditional follow-up ("if the
+  provider adds support, you could re-enable retries") while the given code disables POST retries is fine.
 - It adds only one resilience handler to the client (no stacked handlers).
 - It does not claim it ran commands or edited files.
 

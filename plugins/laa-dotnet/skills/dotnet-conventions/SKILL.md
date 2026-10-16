@@ -65,14 +65,14 @@ description: Modern .NET / C# backend conventions (solution layout, ASP.NET Core
   b.HasQueryFilter("Tenant", e => e.TenantId == _tenantId);
   b.HasQueryFilter("SoftDelete", e => !e.IsDeleted);
   ```
-  Before EF 10, use one combined filter (`e => e.TenantId == _tenantId && !e.IsDeleted`).
+  Name the existing filter too: EF 10 throws (`Both anonymous and named query filters cannot be applied simultaneously`) when an entity mixes an unnamed and a named filter. Before EF 10, use one combined filter (`e => e.TenantId == _tenantId && !e.IsDeleted`).
 - **Plain `IgnoreQueryFilters()` disables every filter, tenant included.** To show deleted rows use `IgnoreQueryFilters(["SoftDelete"])` (EF 10).
 - The tenant id must come from a member of the `DbContext` instance (constructor parameter or property set from a scoped tenant context), not a captured local or static. In an `IEntityTypeConfiguration<T>`, pass the context in so the filter references `_context.TenantId`.
-- A required navigation to a filtered entity is joined with `INNER JOIN`, so filtering the child drops the parent rows. Make that navigation optional, or filter both sides consistently.
+- When entity A has a required navigation to filtered entity B, queries on A that include or join B use `INNER JOIN` and drop the A rows whose B is filtered out. Make that navigation optional, or filter both sides consistently.
 - Tests must prove cross-tenant isolation, including on the soft-delete and admin paths.
 
 ### Bulk updates and concurrency
-- `ExecuteUpdate`/`ExecuteDelete` bypass the change tracker: no `SaveChanges` overrides or interceptors run (a soft-delete override becomes a real `DELETE`), no automatic concurrency check, and tracked instances keep stale values.
+- `ExecuteUpdate`/`ExecuteDelete` bypass the change tracker: no `SaveChanges` overrides or `SaveChanges` interceptors run (a soft-delete override becomes a real `DELETE`), no automatic concurrency check, and tracked instances keep stale values.
 - Each call is its own transaction. Wrap several calls in `context.Database.BeginTransactionAsync()` when they must succeed together.
 - Don't mix them with tracked changes on the same entities in one unit of work: the later `SaveChanges` overwrites the bulk update.
 - For optimistic concurrency, put the token in the `Where` and treat `0` rows affected as a conflict.
