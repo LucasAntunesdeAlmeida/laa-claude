@@ -5,7 +5,7 @@ description: Git conventions for commits, branches, history, and pull requests (
 
 # Git conventions
 
-**Precedence: the repo's CONTRIBUTING, `CLAUDE.md`, `AGENTS.md`, `.claude/laa/project-map.md`, and its existing `git log` style override everything here.** Check `git log --oneline -20` before the first commit. If the history clearly follows another convention, follow that one instead.
+**Precedence: the repo's CONTRIBUTING, `CLAUDE.md`, `AGENTS.md`, `.claude/laa/project-map.md`, and its existing `git log` style override everything here.** One exception: on AI attribution, the user's own instructions (their `CLAUDE.md` or memory) beat the repo's. Before the first commit message, check `git log --oneline -20` and read CONTRIBUTING and `AGENTS.md` if present (commit rules, AI-disclosure policy). If the history clearly follows another convention, follow that one instead.
 
 The laa core rule still applies: never commit on the default branch. Use a task branch, or a git worktree when the checkout has unrelated uncommitted changes.
 
@@ -13,7 +13,7 @@ The laa core rule still applies: never commit on the default branch. Use a task 
 - Name branches `<type>/<short-slug>`, e.g. `feat/invoice-export` or `fix/null-billing-address`. Use the same types as commits, plus `migrate/`.
 - If there's a ticket, put its key first: `feat/ABC-123-invoice-export`.
 - Use lowercase and hyphens, and keep names under ~50 characters. Don't put personal names or dates in them.
-- Keep branches short-lived (about two days at most) with one owner (or one pair). Split bigger work rather than letting a branch age. Delete it after it's merged.
+- Keep branches short-lived (aim for a few days) with one owner (or one pair). Split bigger work rather than letting a branch age. Delete it after it's merged.
 
 ## Commit messages: Conventional Commits 1.0
 ```
@@ -31,8 +31,9 @@ Refs: #123
 - **body**: wrap at 72 characters. Explain *why*, and mention any non-obvious trade-off. Leave out the *how*: the diff shows that. Skip the body for self-explanatory changes.
 - **footers**: `Refs: #123` or `Closes #123` for issues. Use `Co-authored-by:` only for real human co-authors.
 - **reverts**: `revert: <subject of the reverted commit>` with a `Refs: <sha>` footer naming the reverted commit(s).
-- **No AI attribution by default**: no `Co-Authored-By: Claude …`, no "Generated with …" lines in commits or PR bodies.
-  - Exception: the repo has an AI policy (CONTRIBUTING, `AGENTS.md`, or a policy doc) that asks for disclosure. Then use exactly the trailer form it asks for (e.g. `Assisted-by: …`), and nothing more.
+- **No AI attribution by default**: no `Co-Authored-By: Claude …`, no "Generated with …" lines in commits or PR bodies. Read CONTRIBUTING and `AGENTS.md` for a disclosure rule first, even when you only draft the message.
+  - Exception: the repo's policy (CONTRIBUTING, `AGENTS.md`, or a policy doc) **requires** disclosure. Then use exactly the trailer form it requires (e.g. `Assisted-by: …`), and nothing more. A policy that only allows or suggests it doesn't count.
+  - If the user's own instructions forbid AI attribution, don't add it even then. Tell the user the repo requires `<form>` and let them decide.
   - Never add `Signed-off-by:` or use `git commit -s` yourself: only a human can certify the DCO. If the repo requires sign-off, tell the user they need to add it.
 
 ## Commit content
@@ -61,7 +62,7 @@ Refs: #123
 
 ## Signing
 - If the repo requires signed commits (branch protection, CONTRIBUTING) or `commit.gpgsign` is set, never bypass signing (`--no-gpg-sign`, `-c commit.gpgsign=false`). If signing fails, stop and tell the user.
-- GitHub's "Rebase and merge" creates commits GitHub can't sign. In a repo that requires signatures, use squash or a merge commit, or rebase locally and push.
+- GitHub's "Rebase and merge" creates commits GitHub can't sign. In a repo that requires signatures, use squash or a merge commit. A maintainer can also rebase-merge locally with signed commits.
 
 ## History
 - To update your branch, rebase it onto the default branch. Don't merge the default branch into it, unless the repo's history shows merge commits are the norm.
@@ -81,18 +82,18 @@ Refs: #123
 - Open a draft PR when you want early feedback on direction.
 
 ## Releases
-- **Check for release tooling first.** If the repo has `release-please-config.json` (or `.release-please-manifest.json`), a `.releaserc*` file (semantic-release), or a `.changeset/` folder, the tool owns versions, tags, and `CHANGELOG.md`. Don't hand-tag, hand-bump versions, or hand-edit the changelog.
-  - release-please: correct Conventional Commits drive the bump. To force a version, add a `Release-As: x.y.z` footer to a commit.
+- **Check for release tooling first.** If the repo has `release-please-config.json` (or `.release-please-manifest.json`), a semantic-release config (`.releaserc*`, `release.config.{js,cjs,mjs}`, or a `"release"` key in `package.json`), a `.changeset/` folder, or a CI workflow that runs `release-please-action` or `semantic-release`, the tool owns versions, tags, and `CHANGELOG.md`. Don't hand-tag, hand-bump versions, or hand-edit the changelog.
+  - release-please: correct Conventional Commits drive the bump. Under 0.x, read `bump-minor-pre-major` in its config before predicting the bump. To force a version, add a `Release-As: x.y.z` footer to a commit.
   - semantic-release: correct Conventional Commits drive the bump.
   - Changesets: add a `.changeset/<name>.md` with the bump type per package (`npx changeset`) in the same PR.
 - **Without tooling**, use SemVer. The version is `MAJOR.MINOR.PATCH`; the `v` belongs only to the tag (`v1.4.0` tags version `1.4.0`, so manifests say `1.4.0`).
   - From 1.0.0 on: bump MAJOR for a `!` or `BREAKING CHANGE`, MINOR for `feat`, PATCH for `fix` and `perf`.
-  - Under 0.y.z: a breaking change bumps MINOR, not MAJOR (`0.4.2` → `0.5.0`; release-please's `bump-minor-pre-major`). `feat` also bumps MINOR, `fix` and `perf` PATCH. Don't jump to 1.0.0 just because something broke; 1.0.0 is a deliberate "stable API" decision for the user.
+  - Under 0.y.z, SemVer only says "anything MAY change". A breaking change bumps MINOR, not MAJOR (`0.4.2` → `0.5.0`): the common 0.x convention. release-please does this only with `"bump-minor-pre-major": true`, otherwise it goes to 1.0.0. `feat` also bumps MINOR, `fix` and `perf` PATCH. Don't jump to 1.0.0 just because something broke; 1.0.0 is a deliberate "stable API" decision for the user.
 - Write release notes from the Conventional Commit history, grouped by type. List breaking changes first.
 
 ## Definition of done (git)
 - [ ] The work is on a task branch, not the default branch.
 - [ ] Each commit is one logical change and builds green.
 - [ ] Messages follow the convention, and breaking changes are marked (in the PR title too, for squash merges).
-- [ ] There are no secrets, local files, or AI attribution lines the repo's policy doesn't ask for.
+- [ ] There are no secrets, local files, or AI attribution lines the repo's policy doesn't require.
 - [ ] The PR body covers what/why, testing, and risk.

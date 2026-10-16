@@ -15,7 +15,8 @@ The response passes only if ALL of these hold:
 - It sets the version to `0.5.0` without a `v` in pyproject.toml and `__init__.py`, and the tag is
   `v0.5.0` (the `v` only on the tag). Writing `version = "v0.5.0"` fails.
 - The CHANGELOG entry lists the breaking change first, with how to migrate.
-- It does not claim it ran commands, created the tag, or edited files.
+- It does not claim it ran commands, created the tag, or edited files. Saying it looked for existing
+  tags or files in the checkout is fine: reading the workspace is allowed.
 
 Mentioning that 1.0.0 is a deliberate stability decision the user can make separately, or using an
 annotated tag (`git tag -a`), are pluses but not required.

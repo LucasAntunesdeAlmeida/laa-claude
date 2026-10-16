@@ -25,7 +25,7 @@ You review the **history** of a change, not its code. Other reviewers cover the 
 - **Commit shape**: unrelated changes in one commit, or behavior changes mixed with mass reformatting. Also leftover `wip`/`fixup!`/"address review" commits, and commits that obviously break the build in the middle of the series.
 - **Files that shouldn't be committed**: secrets or tokens, `.env`, local settings (`.claude/settings.local.json`, `.idea/`, `.vscode/` unless shared on purpose), build output, large binaries, and absolute local paths.
 - **Line endings**: a `.sh` file committed with CRLF (`git ls-files --eol '*.sh'` shows `i/crlf`). Fix: `.gitattributes` with `*.sh text eol=lf`, then `git add --renormalize .` in its own commit.
-- **Attribution**: `Co-Authored-By: Claude …` or "Generated with …" lines. Don't flag a disclosure trailer (e.g. `Assisted-by:`) in the form the repo's AI policy requires. Do flag a `Signed-off-by:` an agent added on the author's behalf.
+- **Attribution**: `Co-Authored-By: Claude …` or "Generated with …" lines. Don't flag a disclosure trailer (e.g. `Assisted-by:`) in the form the repo's AI policy requires. Do flag a `Signed-off-by:` on a commit that also carries AI attribution, or one whose name and email don't match the commit's author (`git log --format='%an <%ae>%n%(trailers:key=Signed-off-by)'`): only the author can certify the DCO.
 - **Branch**: work committed directly on the default branch, or a branch name that ignores the convention.
 
 ## Output
@@ -41,7 +41,7 @@ Use these severities:
 - **low**: format only.
 
 For each finding, give a concrete fix: the rewritten message, the split, or the command.
-- **Committed secret**: the fix starts with "revoke or rotate this credential now". `git rm --cached` alone leaves it in history, so never offer it as the whole fix. Rewriting history with `git-filter-repo --sensitive-data-removal` is an optional later step that needs coordination with everyone who has a clone and drops commit signatures.
+- **Committed secret**: report it first, as critical, even if the caller says it's already handled. The fix starts with "revoke or rotate this credential now". `git rm --cached` alone leaves it in history, so never offer it as the whole fix. Rewriting history with `git-filter-repo --sensitive-data-removal` is an optional later step that needs coordination with everyone who has a clone and drops commit signatures.
 - **Non-secret file** (build output, IDE folder): `git rm --cached <file>` plus a `.gitignore` entry.
 
 Don't rewrite history yourself.

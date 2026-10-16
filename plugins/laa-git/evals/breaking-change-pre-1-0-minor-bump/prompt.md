@@ -1,6 +1,6 @@
 ---
 name: breaking-change-pre-1-0-minor-bump
-description: A 0.x library with no release tooling has a breaking commit since its last release. With laa-git, the answer bumps MINOR (0.4.2 to 0.5.0) under SemVer's 0.y.z rules, puts `v` only on the tag, and doesn't jump to 1.0.0.
+description: Regression guard rather than a before/after discriminator. The model already bumps MINOR for a 0.x breaking change without the pack (see release-please-pre-major-bump for the discriminator). A 0.x library with no release tooling has a breaking commit since its last release. With laa-git, the answer bumps MINOR (0.4.2 to 0.5.0) under SemVer's 0.y.z rules, puts `v` only on the tag, and doesn't jump to 1.0.0.
 tags: [git, release, semver]
 runs: 3
 max_turns: 8
