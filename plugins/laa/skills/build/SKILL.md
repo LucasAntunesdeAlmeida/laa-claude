@@ -38,7 +38,7 @@ Steps that call a workflow use the **Workflow** tool. You may not be able to use
 1. Call the **Workflow** tool with `name: "laa:design-panel"` and `args: { requirements: <PRD> }`. The default lenses (simplicity / scale / cost) suit greenfield work.
 2. Write:
    - `docs/architecture.md`: the blueprint, plus the data model, API, threat model, scale-risk, and infra deep-dives.
-   - `docs/adr/NNNN-<decision>.md`: one ADR per key decision (context, options, decision, consequences).
+   - `docs/adr/NNNN-<decision>.md`: one ADR per key decision, in the MADR shape: a `status` (Proposed, Accepted, Deprecated, or Superseded by ADR-NNNN), the date, context, options, decision, and consequences. Write them as Proposed; set Accepted when the gate below approves. A decision that replaces an earlier ADR links to it, and the old one becomes `Superseded by ADR-NNNN` with a link back.
 3. Present a short summary: the chosen architecture, why it won, and the top 3 risks. ★ **Gate: user approves the architecture.**
 
 ## Phase 3: Plan

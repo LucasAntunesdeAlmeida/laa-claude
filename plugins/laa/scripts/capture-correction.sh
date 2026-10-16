@@ -12,6 +12,14 @@ input=$(cat)
 prompt=$(printf '%s' "$input" | sed -n 's/.*"prompt"[[:space:]]*:[[:space:]]*"//p' | sed 's/"[[:space:]]*}[[:space:]]*$//')
 [ -n "$prompt" ] || exit 0
 
+# The harness injects subagent hand-backs and background-task notifications as user turns. They aren't
+# the user speaking, so they're never corrections. JSON encoders may escape the opening angle bracket
+# as a unicode escape, so turn that back into the bracket first.
+marked=$(printf '%s' "$prompt" | sed 's/[\]u003[cC]/</g')
+for marker in '<agent-message' '[Subagent hand-back]' '<task-notification' '[SYSTEM NOTIFICATION'; do
+  case "$marked" in *"$marker"*) exit 0 ;; esac
+done
+
 # English and Portuguese correction phrases. Keep the list tight: every false positive costs context.
 pattern="that(’|')?s (wrong|not right|incorrect)|not what i (asked|meant|wanted)"
 pattern="$pattern|i (told|said|asked) you|you (forgot|missed|ignored|broke)|you should(n(’|')?t| not| have)"
@@ -27,6 +35,6 @@ if ! printf '%s' "$prompt" | grep -Eiq "$pattern"; then
   printf '%s' "$prompt" | grep -Eiq "$benign" && exit 0
 fi
 
-msg="The user's message may be a correction. Handle it first. Then, if it reveals a durable preference, convention, or repo fact (not a one-off), append one entry to .claude/laa/learnings.md in the laa:retro format (scope, kind: correction, target, signal quoting the user, proposal, status: open) and say so in one line."
+msg="The user's message may be a correction. Handle it first. Then, if it reveals a durable preference, convention, or repo fact (not a one-off), log it following the laa:retro skill's Git rule: on a work branch, append one entry to .claude/laa/learnings.md in the laa:retro format (scope, kind: correction, target, signal quoting the user, proposal, status: open) and say so in one line. On the default branch, write nothing: name the learning in one line and suggest /laa:retro."
 esc=$(printf '%s' "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')
 printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$esc"

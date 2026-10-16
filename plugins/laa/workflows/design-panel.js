@@ -79,11 +79,16 @@ const proposals = (await parallel(lenses.map((lens, i) => () =>
 if (!proposals.length) throw new Error('design-panel: no architect returned a proposal')
 
 // Barrier is intentional: judges compare all proposals side by side.
-const listing = proposals.map((p, i) => `=== PROPOSAL ${i + 1} (lens: ${p.lens}) ===\n${p.text}`).join('\n\n')
+const entries = proposals.map((p, i) => `=== PROPOSAL ${i + 1} (lens: ${p.lens}) ===\n${p.text}`)
+const listing = entries.join('\n\n')
+// LLM judges favor whichever proposal they read first (position bias), so judge j reads the list rotated
+// by j. Proposal numbers stay the same in every order, so the scores still line up.
+const rotated = j => entries.slice(j % entries.length).concat(entries.slice(0, j % entries.length)).join('\n\n')
 phase('Judge')
 const judgeLenses = ['a pragmatic CTO of a 5-person startup', 'a principal engineer who will be on call for this system']
 const judgments = (await parallel(judgeLenses.map((who, j) => () =>
-  spawn(`${brief}\n\nYou are ${who}. Score every proposal against the requirements. Be critical.\n\n${listing}`,
+  spawn(`${brief}\n\nYou are ${who}. Score every proposal against the requirements. Be critical. ` +
+    `The order they're listed in means nothing; score each by its PROPOSAL number.\n\n${rotated(j)}`,
     { label: `judge:${j + 1}`, phase: 'Judge', model: 'opus', effort: 'high', schema: SCORES })))).filter(Boolean)
 
 const totals = proposals.map((_, i) => {

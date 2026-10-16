@@ -5,7 +5,7 @@ This repo is a Claude Code plugin marketplace (`.claude-plugin/marketplace.json`
 ## Authoring rules
 - **Description = trigger.** Skills and agents are chosen from their `description` alone. Include the user phrases and situations that should trigger them.
 - **Agents are leaves.** They do one job and return. Orchestration lives in skills (main session) and workflows. Don't write agents that delegate.
-- **Agents pin `model` and `effort`** in frontmatter, so they don't depend on the session's settings. Use `opus` for design, root cause, and review, and `sonnet` for narrower or mechanical work. Use `effort: high` where the output must be right (review, verification, root cause, design) and `medium` otherwise. Skills don't set either, so the user's choice drives the main session.
+- **Agents pin `model` and `effort`** in frontmatter, so they don't depend on the session's settings. Use `opus` with `effort: high` for design, root cause, cross-cutting review, and verification, where the output must be right. Use `sonnet` for checklist-driven narrow reviewers (the stack and practice pack reviewers, and core's `api-designer` and `perf-reviewer`) and for other narrower or mechanical work, with `effort: medium` (`api-designer` and `perf-reviewer` keep `high`). Skills don't set either, so the user's choice drives the main session.
 - **Workflows** (`plugins/laa/workflows/*.js`):
   - They're plain JS with `export const meta` as a pure literal.
   - No `Date.now()`, `Math.random()`, or Node APIs.
