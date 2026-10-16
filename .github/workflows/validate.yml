@@ -12,8 +12,9 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # v7 of both run on Node 24; the runners removed Node 20, which v4 ran on.
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Install Claude Code
@@ -53,6 +54,19 @@ jobs:
           for t in plugins/*/scripts/tests/*.test.sh; do
             sh "$t" || { echo "::error file=$t::hook test failed"; exit 1; }
           done
+      - name: Test mods
+        run: claude plugin test ./plugins/laa-mods
+      - name: Type-check mods
+        run: |
+          # tsc needs the declarations Claude Code writes into .claude-plugin/types/, and it writes them only
+          # when an interactive session loads the mod from --plugin-dir. Start one under a pseudo-terminal and
+          # let it go; if this build writes nothing that way, say so instead of failing every run.
+          timeout 60 script -qec "claude --plugin-dir ./plugins/laa-mods" /dev/null < /dev/null > /dev/null 2>&1 || true
+          if [ ! -f plugins/laa-mods/.claude-plugin/types/claude-code/index.d.ts ]; then
+            echo "::warning file=plugins/laa-mods/tsconfig.json::no mod types were written, so tsc did not run; run it locally (see CLAUDE.md Checks)"
+            exit 0
+          fi
+          npx -y -p typescript tsc -p plugins/laa-mods
       - name: Test workflow reports
         run: node --test "plugins/laa/tests/*.test.mjs"
       - name: Check /laa-help lists every laa skill

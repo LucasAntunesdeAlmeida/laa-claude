@@ -39,8 +39,15 @@ export const normalize = (p: string) => {
   return root + parts.join('/')
 }
 
-export const resolveFrom = (cwd: string, p: string) =>
-  normalize(isAbsolute(p) ? p : `${slash(cwd).replace(/\/+$/, '')}/${slash(p)}`)
+// Git Bash spells C:\x as /c/x, which the engine's file system and processes don't translate.
+// A session whose directory has a drive letter runs on Windows, so map the spelling there.
+const fromGitBash = (cwd: string, p: string) =>
+  /^[a-zA-Z]:/.test(cwd) ? slash(p).replace(/^\/([a-zA-Z])(?=\/|$)/, (_, d: string) => `${d.toUpperCase()}:`) : p
+
+export const resolveFrom = (cwd: string, path: string) => {
+  const p = fromGitBash(cwd, path)
+  return normalize(/^[a-zA-Z]:$/.test(p) ? `${p}/` : isAbsolute(p) ? p : `${slash(cwd).replace(/\/+$/, '')}/${slash(p)}`)
+}
 
 // git prints "C:/x" on Windows while tools may pass "c:\x"; compare paths case-insensitively there.
 export const isUnder = (file: string, dir: string) => {
@@ -50,16 +57,32 @@ export const isUnder = (file: string, dir: string) => {
 
 const unquote = (s: string) => s.replace(/^(["'])(.*)\1$/, '$2')
 
-// Where a shell command runs `git commit`, if it does: the `-C` directory, else the
-// directory of a leading `cd`, else '' for the session's directory. null when it doesn't commit.
+// `dir` taken from `base`: a relative one goes under it.
+const under = (base: string, dir: string) => (base === '' || isAbsolute(dir) ? dir : `${base.replace(/[\\/]+$/, '')}/${dir}`)
+
+const ARG = `("[^"]*"|'[^']*'|[^\\s;&|)]+)`
+// A directory change starting a command: `cd` or `pushd` in a POSIX shell, and in PowerShell
+// `Set-Location` or `Push-Location` (or their `sl`, `chdir` aliases), with an optional -Path or -LiteralPath.
+const CHDIR = new RegExp(`(?:^|[;&|(\\n{])\\s*(?:cd|chdir|pushd|sl|set-location|push-location)(?:\\s+-(?:literal)?path)?\\s+${ARG}`, 'gi')
+// `git commit` (PowerShell's `git.exe` and `& git` too), after any `-C <dir>` and `-c <key=value>` options.
+const COMMIT = /(?:^|[;&|(\n{]\s*|\s)git(?:\.exe)?((?:\s+-[cC]\s+(?:"[^"]*"|'[^']*'|\S+))*)\s+commit\b/i
+
+// Where a Bash or PowerShell command runs `git commit`, if it does: the directory the `cd`s before it
+// and its `-C` options lead to, relative to the session's directory ('' for that directory itself).
+// null when it doesn't commit.
 export const commitDir = (command: string): string | null => {
-  const commit = /(?:^|[;&|(\n]\s*|\s)git((?:\s+-[cC]\s+(?:"[^"]*"|'[^']*'|\S+))*)\s+commit\b/.exec(command)
+  const commit = COMMIT.exec(command)
   if (!commit) return null
-  const dashC = /-C\s+("[^"]*"|'[^']*'|\S+)/.exec(commit[1] ?? '')
-  if (dashC?.[1]) return unquote(dashC[1])
-  const cd = /^\s*cd\s+("[^"]*"|'[^']*'|[^\s;&|]+)/.exec(command)
-  return cd?.[1] ? unquote(cd[1]) : ''
+  let dir = ''
+  for (const cd of command.slice(0, commit.index).matchAll(CHDIR)) if (cd[1]) dir = under(dir, unquote(cd[1]))
+  // -C is the directory; -c (lowercase) sets a config value.
+  for (const c of (commit[1] ?? '').matchAll(/-C\s+("[^"]*"|'[^']*'|\S+)/g)) if (c[1]) dir = under(dir, unquote(c[1]))
+  return dir
 }
+
+// git subcommands that move HEAD or the branches, and so change what the band shows.
+export const changesRepo = (command: string) =>
+  /(?:^|[;&|(\n{]\s*|\s)git(?:\.exe)?(?:\s+-[cC]\s+(?:"[^"]*"|'[^']*'|\S+))*\s+(?:switch|checkout|commit|merge|rebase|worktree|reset|branch|pull|revert|cherry-pick)\b/i.test(command)
 
 // Which laa skill a skill prompt is, from the heading every laa skill starts with ("# /laa:fix").
 export const laaSkillOf = (prompt: string) => /^#\s*\/laa:([a-z-]+)\b/m.exec(prompt)?.[1] ?? null
@@ -72,6 +95,11 @@ export const TRACKED = [...PIPELINES, 'review', 'adopt', 'forge', 'evolve', 'res
 export const LOCAL_DIR = '.claude/laa/local'
 export const REVIEW_FILE = `${LOCAL_DIR}/last-review.md`
 export const journalFile = (branch: string) => `${LOCAL_DIR}/runs/${branch.replace(/[\\/]/g, '-')}.md`
+// /laa:build moves through one branch per milestone, so it keeps one journal for the whole build.
+export const BUILD_JOURNAL = `${LOCAL_DIR}/runs/build.md`
+
+// The run a journal says is paused: one that hasn't finished or stopped.
+export const isPaused = (j: Journal | null): j is Journal => j !== null && j.status !== 'done' && j.status !== 'stopped'
 
 export const countOpenLearnings = (text: string) =>
   text.split(/\r?\n/).filter(line => /^- status: open\b/.test(line)).length

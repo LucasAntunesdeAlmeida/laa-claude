@@ -3,9 +3,9 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Finding, Learning, Learnings, Run, Status } from '../types'
 import {
-  commitDir, countOpenHigh, countOpenLearnings, ENGINES, gateOfQuestions, HELP, isUnder, journalFile, laaSkillOf,
-  LOCAL_DIR, nextActionOf, parentOf, parseFindings, parseJournal, parseLearnings, PIPELINES, progressOf, rejectLearning,
-  resolveFrom, REVIEW_FILE, setFindingStatus, slash, stillOpen, suggestionFor, TRACKED,
+  BUILD_JOURNAL, changesRepo, commitDir, countOpenHigh, countOpenLearnings, ENGINES, gateOfQuestions, HELP, isPaused, isUnder,
+  journalFile, laaSkillOf, LOCAL_DIR, nextActionOf, normalize, parentOf, parseFindings, parseJournal, parseLearnings, PIPELINES,
+  progressOf, rejectLearning, resolveFrom, REVIEW_FILE, setFindingStatus, slash, stillOpen, suggestionFor, TRACKED,
 } from './git'
 import type { Progress, Repo } from './git'
 
@@ -39,32 +39,73 @@ const PRE = 'laa · '
 // The theme's semantic colors, so laa's marks follow the person's theme, colorblind themes included.
 const C = { danger: 'error', warning: 'warning', action: 'suggestion', gate: 'permission' } as const
 
-const denial = (repo: Repo, what: string) =>
+// Where the guard refused a change: the repo and its default branch.
+type Where = Pick<Repo, 'top' | 'branch'>
+
+const denial = (repo: Where, what: string) =>
   `laa: ${what} on the default branch \`${repo.branch}\` of ${repo.top} is blocked. ` +
   'Create a task branch first (`git switch -c feat/<slug>` or `fix/<slug>`), or a git worktree if the ' +
   'checkout has unrelated uncommitted changes. If the user explicitly wants this on the default branch, ' +
   `ask them to type /${ALLOW_COMMAND}; don't work around this block.`
 
+// What a guard that failed before it let the call through answers: the call doesn't run unchecked.
+const guardFailed = (kind: string) => ({
+  deny: `laa: the default-branch guard failed (${kind}), so this call did not run. Try it once more; if it fails again, ` +
+    "tell the user the laa-mods guard can't check this repo. Don't work around it.",
+})
+
+// What a laa command that failed answers, in place of the engine's "unknown command".
+const commandFailed = (command: string, kind: string) => ({ text: `${PRE}/${command} failed (${kind}). Try it again.` })
+
 const baseName = (p: string) => slash(p).split('/').pop() || p
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 // Refuses the call, and says so on screen as well as in the transcript.
-function blocked($: Engine, repo: Repo, what: string, short: string) {
+function blocked($: Engine, repo: Where, what: string, short: string) {
   $.ui.toast(`${PRE}blocked ${short} on ${repo.branch}. Create a task branch first.`)
   return { deny: denial(repo, what) }
 }
 
+// A git command that couldn't run (no git, a timeout) fails like one that ran and failed.
 async function git($: Engine, cwd: string, ...args: string[]) {
-  const run = await $.process.run(['git', ...args], { cwd, timeoutMs: 5000 })
-  return { ok: run.exitCode === 0, out: run.stdout.trim() }
+  try {
+    const run = await $.process.run(['git', ...args], { cwd, timeoutMs: 5000 })
+    return { ok: run.exitCode === 0, out: run.stdout.trim() }
+  } catch {
+    return { ok: false, out: '' }
+  }
 }
 
+// A file's text; '' when it's missing or can't be read (too large, a denied read).
 async function readText($: Engine, path: string) {
-  return (await $.fs.exists(path)) ? String(await $.fs.read(path)) : ''
+  try {
+    return (await $.fs.exists(path)) ? String(await $.fs.read(path)) : ''
+  } catch {
+    return ''
+  }
 }
 
-// The repository a path belongs to, read from its nearest existing directory; null outside git.
-async function repoAt($: Engine, path: string): Promise<Repo | null> {
+// Where a path lands, every link followed: its nearest existing ancestor resolved, plus the rest.
+// null when nothing on the way resolves.
+async function realOf($: Engine, path: string) {
+  let dir = normalize(path)
+  let rest = ''
+  for (let i = 0; i < 64; i += 1) {
+    const stat = await $.fs.stat(dir, { resolve: true }).catch(() => undefined)
+    if (stat?.realPath !== undefined) {
+      const real = slash(stat.realPath).replace(/\/+$/, '')
+      return rest ? `${real}/${rest}` : real || '/'
+    }
+    const up = parentOf(dir)
+    if (up === dir) return null
+    rest = rest ? `${baseName(dir)}/${rest}` : baseName(dir)
+    dir = up
+  }
+  return null
+}
+
+// The top of the repository a path belongs to, read from its nearest existing directory; null outside git.
+async function topAt($: Engine, path: string) {
   let dir = slash(path)
   for (let i = 0; i < 64 && !(await $.fs.exists(dir)); i += 1) {
     const up = parentOf(dir)
@@ -72,48 +113,74 @@ async function repoAt($: Engine, path: string): Promise<Repo | null> {
     dir = up
   }
   const top = await git($, dir, 'rev-parse', '--show-toplevel')
-  if (!top.ok || !top.out) return null
-  const root = top.out
-  const [branch, head, origin, common, hasLearnings, hasMap] = await Promise.all([
-    git($, root, 'symbolic-ref', '-q', '--short', 'HEAD'),
-    git($, root, 'rev-parse', '-q', '--verify', 'HEAD'),
-    git($, root, 'symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD'),
-    git($, root, 'rev-parse', '--path-format=absolute', '--git-common-dir'),
-    // Adopted means laa's committed state is there; a folder holding only local state doesn't count.
-    $.fs.exists(`${root}/${LEARNINGS_FILE}`),
-    $.fs.exists(`${root}/${MAP_FILE}`),
+  return top.ok && top.out ? top.out : null
+}
+
+// Adopted means laa's committed state is there; a folder holding only local state doesn't count.
+async function isAdoptedAt($: Engine, top: string) {
+  const [hasLearnings, hasMap] = await Promise.all([$.fs.exists(`${top}/${LEARNINGS_FILE}`), $.fs.exists(`${top}/${MAP_FILE}`)])
+  return hasLearnings || hasMap
+}
+
+// The branch checked out at `top`, and whether it's the default one.
+async function branchAt($: Engine, top: string) {
+  const [branch, origin] = await Promise.all([
+    git($, top, 'symbolic-ref', '-q', '--short', 'HEAD'),
+    git($, top, 'symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD'),
   ])
   const name = branch.ok && branch.out ? branch.out : null
   const defaults = origin.ok && origin.out ? [origin.out.replace(/^[^/]+\//, '')] : ['main', 'master']
-  // The main checkout holds the git directory; from a worktree it's the parent of the common .git.
-  const main = common.ok && /\/\.git$/.test(slash(common.out)) ? slash(common.out).replace(/\/\.git$/, '') : root
-  return {
-    top: root,
-    main,
-    branch: name,
-    hasCommits: head.ok,
-    isDefault: name !== null && defaults.includes(name),
-    isAdopted: hasLearnings || hasMap,
-  }
+  return { branch: name, isDefault: name !== null && defaults.includes(name) }
 }
 
-// The repo when the guard refuses changes to it, else null.
-async function guarded($: Engine, guard: string, repo: Repo | null) {
-  if (guard === 'off' || !repo) return null
-  if (guard === 'adopted' && !repo.isAdopted) return null
+async function hasCommitsAt($: Engine, top: string) {
+  return (await git($, top, 'rev-parse', '-q', '--verify', 'HEAD')).ok
+}
+
+// The repository a path belongs to, read from its nearest existing directory; null outside git.
+async function repoAt($: Engine, path: string): Promise<Repo | null> {
+  const top = await topAt($, path)
+  if (!top) return null
+  const [b, hasCommits, isAdopted, common] = await Promise.all([
+    branchAt($, top),
+    hasCommitsAt($, top),
+    isAdoptedAt($, top),
+    git($, top, 'rev-parse', '--path-format=absolute', '--git-common-dir'),
+  ])
+  // The main checkout holds the git directory; from a worktree it's the parent of the common .git.
+  const main = common.ok && /\/\.git$/.test(slash(common.out)) ? slash(common.out).replace(/\/\.git$/, '') : top
+  return { top, main, branch: b.branch, hasCommits, isDefault: b.isDefault, isAdopted }
+}
+
+// The repo when the guard refuses changes at `path`, else null. The cheap checks go first, so most edits
+// start no git process: the guard's mode and this session's /laa-allow-main, then (adopted mode) whether laa
+// adopted the repo, and only then its branch.
+async function guardedAt($: Engine, guard: string, path: string): Promise<Where | null> {
+  if (guard === 'off' || (await read($, allowMain))) return null
+  const top = await topAt($, path)
+  if (!top) return null
+  if (guard === 'adopted' && !(await isAdoptedAt($, top))) return null
+  const b = await branchAt($, top)
   // A repo with no commits has nothing to branch from: its first commit goes on the default branch.
-  if (!repo.isDefault || !repo.hasCommits) return null
-  return (await read($, allowMain)) ? null : repo
+  if (!b.isDefault || !(await hasCommitsAt($, top))) return null
+  return { top, branch: b.branch }
 }
 
 async function guardFile($: Engine, guard: string, path: string) {
   const file = resolveFrom(await $.session.cwd(), path)
-  const repo = await guarded($, guard, await repoAt($, parentOf(file)))
-  if (!repo || !isUnder(file, repo.top) || isUnder(file, `${repo.top}/.git`)) return null
-  // laa's local state ignores itself, but its .gitignore has to be written before git ignores anything there.
-  if (isUnder(file, `${repo.top}/${LOCAL_DIR}`)) return null
-  // Ignored files (local settings, build output) never reach a commit.
-  if ((await git($, repo.top, 'check-ignore', '-q', '--', file)).ok) return null
+  const repo = await guardedAt($, guard, parentOf(file))
+  if (!repo) return null
+  // The exemptions compare where the paths land, not how they're spelled, so a link into the repo
+  // can't pass for laa's local state; a path that can't be placed gets none.
+  const [real, top] = await Promise.all([realOf($, file), realOf($, repo.top)])
+  const root = top ?? repo.top
+  if (real !== null) {
+    if (!isUnder(real, root) || isUnder(real, `${root}/.git`)) return null
+    // laa's local state ignores itself, but its .gitignore has to be written before git ignores anything there.
+    if (isUnder(real, `${root}/${LOCAL_DIR}`)) return null
+    // Ignored files (local settings, build output) never reach a commit.
+    if ((await git($, repo.top, 'check-ignore', '-q', '--', real)).ok) return null
+  }
   return blocked($, repo, `Changing ${file}`, `editing ${baseName(file)}`)
 }
 
@@ -152,7 +219,10 @@ async function statusOf($: Engine, repo: Repo): Promise<Status> {
     mapAge = count?.ok ? Number(count.out) || 0 : 0
   }
   // Journals live in the main checkout, so a run in a worktree and the main checkout see the same one.
-  const journal = repo.branch ? parseJournal(await readText($, `${repo.main}/${journalFile(repo.branch)}`)) : null
+  // A branch's own journal comes first; a build keeps one journal across its milestone branches.
+  const own = repo.branch ? parseJournal(await readText($, `${repo.main}/${journalFile(repo.branch)}`)) : null
+  const build = parseJournal(await readText($, `${repo.main}/${BUILD_JOURNAL}`))
+  const paused = isPaused(own) && own.branch === repo.branch ? own : isPaused(build) ? build : null
   return {
     branch: repo.branch,
     isDefault: repo.isDefault && repo.hasCommits,
@@ -160,7 +230,7 @@ async function statusOf($: Engine, repo: Repo): Promise<Status> {
     mapAge,
     isMapMuted: Boolean(await $.store.get(mutedKey(repo.top))),
     openHigh: countOpenHigh(await readText($, `${repo.top}/${REVIEW_FILE}`)),
-    paused: journal && journal.status !== 'done' && journal.status !== 'stopped' && journal.branch === repo.branch ? journal : null,
+    paused,
   }
 }
 
@@ -181,6 +251,14 @@ async function refresh($: Engine) {
 // was dropped picks the pipeline back up.
 async function applyProgress($: Engine, p: Progress) {
   if (!p.skill && !p.step && !p.gate && !p.isClosing) return
+  // A pipeline's mode line arms the retro nudge too: where an organization manages Claude Code,
+  // skill.prompt hooks don't run in a plugin the person installed, so this may be the only sign it started.
+  const skill = p.skill
+  if (skill && PIPELINES.includes(skill)) {
+    await update($, pipeline, q => (q?.skill === skill ? q : { skill, hasCommitted: false, isNudged: false }))
+  } else if (skill === 'retro') {
+    await update($, pipeline, () => null)
+  }
   const p0 = await read($, pipeline)
   await update($, run, (r): Run | null => {
     if (p.isClosing) return null
@@ -317,7 +395,8 @@ const helpStateOf = (text: string) => ({
   suggested: /^\*\*Suggested\*\* `([^`]+)`: (.+)$/m.exec(text),
 })
 
-const tagColor = (tag: string) => (tag === 'CRIT' || tag === 'HIGH' ? C.danger : tag === 'MED' ? C.warning : undefined)
+// A finding's tag color as props: none for LOW, so the theme's text color holds.
+const tagColor = (tag: string) => (tag === 'CRIT' || tag === 'HIGH' ? { color: C.danger } : tag === 'MED' ? { color: C.warning } : {})
 
 export const register: Register = (on, options) => {
   const guard = String(options.guard ?? 'adopted')
@@ -353,13 +432,13 @@ export const register: Register = (on, options) => {
         ? `${PRE}edits and commits on the default branch are allowed for the rest of this session.`
         : `${PRE}edits and commits on the default branch are blocked again.`,
     }
-  })
+  }).catch(($, e, next) => (next.called ? next(e) : commandFailed(e.command, next.error.kind)))
 
   on('command.run', { command: HELP_COMMAND }, async $ => {
     const repo = await repoAt($, await $.session.cwd())
     await refresh($)
     return { text: helpText(repo, repo?.isAdopted ? await read($, status) : null, await read($, allowMain)) }
-  })
+  }).catch(($, e, next) => (next.called ? next(e) : commandFailed(e.command, next.error.kind)))
 
   on('command.run', { command: LEARNINGS_COMMAND }, async ($, e) => {
     const where = e.args.trim() || (await $.session.cwd())
@@ -369,7 +448,7 @@ export const register: Register = (on, options) => {
     const opened = await $.ui.open({ id: LEARNINGS_PANE, title: `${PRE}open learnings` })
     const count = `${plural(list.entries.length, 'open learning')} in ${repo.top}`
     return { text: opened.isPlaced ? `${PRE}${count}.` : `${PRE}${count}; widen the terminal to see the pane.` }
-  })
+  }).catch(($, e, next) => (next.called ? next(e) : commandFailed(e.command, next.error.kind)))
 
   on('command.run', { command: FINDINGS_COMMAND }, async ($, e) => {
     const where = e.args.trim() || (await $.session.cwd())
@@ -380,26 +459,25 @@ export const register: Register = (on, options) => {
     const opened = await $.ui.open({ id: FINDINGS_PANE, title: `${PRE}last review` })
     const count = `${plural(list.entries.length, 'open finding')} in ${repo.top}`
     return { text: opened.isPlaced ? `${PRE}${count}.` : `${PRE}${count}; widen the terminal to see the pane.` }
-  })
+  }).catch(($, e, next) => (next.called ? next(e) : commandFailed(e.command, next.error.kind)))
 
-  on('tool.call', { tool: 'Edit' }, async ($, e, next) => {
+  // The guards fail closed: one that throws or overruns before it let the call through refuses it.
+  // (A re-entry is a call the plugin's own code raised, which it doesn't guard.)
+  on('tool.call', { tool: ['Edit', 'Write'] }, async ($, e, next) => {
     const refused = await guardFile($, guard, e.file_path)
     if (refused) return refused
     await noteLearnings($, e.file_path)
     return next(e)
-  })
-  on('tool.call', { tool: 'Write' }, async ($, e, next) => {
-    const refused = await guardFile($, guard, e.file_path)
-    if (refused) return refused
-    await noteLearnings($, e.file_path)
-    return next(e)
-  })
+  }).catch(($, e, next) => (next.called || next.error.kind === 're-entry' ? next(e) : guardFailed(next.error.kind)))
+
   on('tool.call', { tool: 'NotebookEdit' }, async ($, e, next) => (await guardFile($, guard, e.notebook_path)) ?? next(e))
+    .catch(($, e, next) => (next.called || next.error.kind === 're-entry' ? next(e) : guardFailed(next.error.kind)))
 
-  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+  // A commit through Bash (Git Bash on Windows) or the PowerShell tool.
+  on('tool.call', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
     const dir = commitDir(e.command)
     if (dir !== null) {
-      const repo = await guarded($, guard, await repoAt($, resolveFrom(await $.session.cwd(), dir || '.')))
+      const repo = await guardedAt($, guard, resolveFrom(await $.session.cwd(), dir || '.'))
       if (repo) return blocked($, repo, 'Committing', 'a commit')
     }
     const ran = await next(e)
@@ -407,27 +485,30 @@ export const register: Register = (on, options) => {
     if (dir !== null && !('deny' in ran) && !ran.isError) {
       await update($, pipeline, p => (p ? { ...p, hasCommitted: true } : p))
     }
-    // Branch switches and commits change what the band shows; the model's next step sees it current.
-    if (/\bgit\b/.test(e.command)) await refresh($)
+    // Branch switches and commits change what the band shows; read-only git commands don't.
+    if (changesRepo(e.command)) await refresh($)
     return ran
-  })
+  }).catch(($, e, next) => (next.called || next.error.kind === 're-entry' ? next(e) : guardFailed(next.error.kind)))
 
   // A ★ gate asked through AskUserQuestion waits on the person until it's answered.
+  // The tracker only follows the question, so a failure lets it through.
   on('tool.call', { tool: 'AskUserQuestion' }, async ($, e, next) => {
     const gate = gateOfQuestions(e.questions)
     if (gate) await update($, run, r => (r ? { ...r, gate } : r))
     const answered = await next(e)
     if (gate) await update($, run, r => (r && r.gate === gate ? { ...r, gate: null } : r))
     return answered
-  })
+  }).catch(($, e, next) => next(e))
 
   // A workflow runs in the background: show its name until its notification arrives or the run moves on.
+  // A run from a script or a scriptPath has no `name`; its result names the workflow.
   on('tool.call', { tool: 'Workflow' }, async ($, e, next) => {
     const ran = await next(e)
-    const name = (e.name ?? '').replace(/^laa:/, '')
-    if (name && !('deny' in ran) && !ran.isError) await update($, run, r => (r ? { ...r, engine: name } : r))
+    if ('deny' in ran || ran.isError) return ran
+    const name = (e.name ?? ran.result.workflowName ?? '').replace(/^laa:/, '')
+    if (name) await update($, run, r => (r ? { ...r, engine: name } : r))
     return ran
-  })
+  }).catch(($, e, next) => next(e))
 
   // The model's own rows carry the run's mode, step, gate, and closing lines; a task notification ends the engine.
   on('session.append', async ($, e, next) => {
@@ -444,7 +525,7 @@ export const register: Register = (on, options) => {
       // A row the band can't read leaves it as it was.
     }
     return stored
-  })
+  }).catch(($, e, next) => next(e))
 
   on('turn.complete', async ($, e, next) => {
     // Only the main loop's own answered turns; a suggestion is refused while the turn still runs, so wait for it to end.
@@ -452,21 +533,25 @@ export const register: Register = (on, options) => {
       void refresh($)
       return next(e)
     }
+    // The run's state first, from the answer alone, so a file that can't be read below can't leave it half-updated.
     await applyProgress($, progressOf(e.answer))
     // A turn ends mid-run only to wait on a text gate or a background workflow; otherwise the run is over,
     // whether it closed with a report or stopped (Stop at a gate, a resume with nothing to resume).
     await update($, run, r => (r && (r.gate || r.engine) ? r : null))
     const command = nextActionOf(e.answer)
     await update($, nextUp, () => (command ? { text: command, isNudged: false } : null))
-    await toastLearnings($)
-    void refresh($)
-    // The model may have marked findings fixed: keep an open pane current.
-    const shown = await read($, findings)
-    if (shown) await loadFindings($, shown.repo)
-
     const p = await read($, pipeline)
     if (p && p.hasCommitted && !p.isNudged) void $.clock.after(400, () => void suggestRetro($))
     else if (command) void $.clock.after(400, () => void suggestNext($))
+    void refresh($)
+    try {
+      await toastLearnings($)
+      // The model may have marked findings fixed: keep an open pane current.
+      const shown = await read($, findings)
+      if (shown) await loadFindings($, shown.repo)
+    } catch {
+      // A file that went missing or grew too large to read; the next turn tries again.
+    }
     return next(e)
   })
 
@@ -661,7 +746,7 @@ export const register: Register = (on, options) => {
         {list.entries.map(f => (
           <Box key={`finding${f.index}`} flexDirection="column" marginTop={1}>
             <Box>
-              <Text bold color={tagColor(f.tag)}>{f.tag.padEnd(4)}</Text>
+              <Text bold {...tagColor(f.tag)}>{f.tag.padEnd(4)}</Text>
               <Text dimColor>{`  ${f.location}`}</Text>
             </Box>
             <Text>{f.title}</Text>
