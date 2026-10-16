@@ -39,8 +39,15 @@ export const normalize = (p: string) => {
   return root + parts.join('/')
 }
 
-export const resolveFrom = (cwd: string, p: string) =>
-  normalize(isAbsolute(p) ? p : `${slash(cwd).replace(/\/+$/, '')}/${slash(p)}`)
+// Git Bash spells C:\x as /c/x, which the engine's file system and processes don't translate.
+// A session whose directory has a drive letter runs on Windows, so map the spelling there.
+const fromGitBash = (cwd: string, p: string) =>
+  /^[a-zA-Z]:/.test(cwd) ? slash(p).replace(/^\/([a-zA-Z])(?=\/|$)/, (_, d: string) => `${d.toUpperCase()}:`) : p
+
+export const resolveFrom = (cwd: string, path: string) => {
+  const p = fromGitBash(cwd, path)
+  return normalize(/^[a-zA-Z]:$/.test(p) ? `${p}/` : isAbsolute(p) ? p : `${slash(cwd).replace(/\/+$/, '')}/${slash(p)}`)
+}
 
 // git prints "C:/x" on Windows while tools may pass "c:\x"; compare paths case-insensitively there.
 export const isUnder = (file: string, dir: string) => {
@@ -50,16 +57,82 @@ export const isUnder = (file: string, dir: string) => {
 
 const unquote = (s: string) => s.replace(/^(["'])(.*)\1$/, '$2')
 
-// Where a shell command runs `git commit`, if it does: the `-C` directory, else the
-// directory of a leading `cd`, else '' for the session's directory. null when it doesn't commit.
-export const commitDir = (command: string): string | null => {
-  const commit = /(?:^|[;&|(\n]\s*|\s)git((?:\s+-[cC]\s+(?:"[^"]*"|'[^']*'|\S+))*)\s+commit\b/.exec(command)
-  if (!commit) return null
-  const dashC = /-C\s+("[^"]*"|'[^']*'|\S+)/.exec(commit[1] ?? '')
-  if (dashC?.[1]) return unquote(dashC[1])
-  const cd = /^\s*cd\s+("[^"]*"|'[^']*'|[^\s;&|]+)/.exec(command)
-  return cd?.[1] ? unquote(cd[1]) : ''
+// `dir` taken from `base`: a relative one goes under it.
+const under = (base: string, dir: string) => (base === '' || isAbsolute(dir) ? dir : `${base.replace(/[\\/]+$/, '')}/${dir}`)
+
+// One argument: quoted, or a word that ends at a space, a separator, or a bracket.
+const WORD = `(?:"[^"]*"|'[^']*'|[^\\s;&|(){}]+)`
+const ARG = `(${WORD})`
+// What can start a command: the start of the text, a separator, or an opening ( or {.
+const START = '(?<=(?:^|[;&|(\\n{])\\s*)'
+// git's options before its subcommand: -C <dir>, -c <key=value>, and the long ones (--no-pager, --git-dir=<dir>).
+const GLOBALS = `((?:\\s+(?:-[cC]\\s+${WORD}|--(?:git-dir|work-tree|namespace|exec-path|config-env)\\s+${WORD}|--?[\\w-]+(?:=${WORD})?))*)`
+// `git` as a command (PowerShell's `git.exe` and `& git` too), then its options.
+const GIT = `(?<=(?:^|[;&|(\\n{])\\s*|\\s)git(?:\\.exe)?${GLOBALS}\\s+`
+// One step of a Bash or PowerShell command, in order: a quoted string (skipped whole, so nothing in it counts);
+// `pushd`/`Push-Location` <dir>; `popd`/`Pop-Location`; `cd`/`Set-Location` <dir> (or their `chdir`, `sl` aliases,
+// with an optional -Path or -LiteralPath); a `git commit`; an opening ( or { and its closing ) or }.
+const STEP = new RegExp(
+  `"[^"]*"|'[^']*'` +
+    `|${START}(?:pushd|push-location)(?:\\s+-(?:literal)?path)?\\s+${ARG}` +
+    `|${START}(popd|pop-location)\\b` +
+    `|${START}(?:cd|chdir|sl|set-location)(?:\\s+-(?:literal)?path)?\\s+${ARG}` +
+    `|${GIT}(commit)\\b` +
+    '|([({])|([)}])',
+  'gi',
+)
+
+// The directories git's options before a subcommand point it at: -C, --work-tree, and the checkout of a --git-dir.
+const gitDirs = (options: string) =>
+  [...options.matchAll(new RegExp(`(?:-C\\s+|--work-tree(?:=|\\s+)|--git-dir(?:=|\\s+))${ARG}`, 'g'))].map(m => {
+    const dir = unquote(m[1] ?? '')
+    return m[0].startsWith('--git-dir') ? dir.replace(/[\\/]\.git[\\/]*$/, '') || '.' : dir
+  })
+
+// Every directory a Bash or PowerShell command may run `git commit` in, relative to the session's directory
+// ('' for that directory itself); empty when it doesn't commit. It follows the cds before each commit, the
+// directory stack that ( { pushd and Push-Location save and ) } popd and Pop-Location restore, and each
+// commit's -C. Where a parse can't be sure (a cd that may fail before ||, `cd -`, a popd past what the command
+// pushed), it keeps every directory the commit could be in, so the guard checks them all.
+export const commitDirs = (command: string): string[] => {
+  let dirs = ['']
+  const stack: string[][] = []
+  const seen = new Set(dirs)
+  const out = new Set<string>()
+  const go = (next: string[]) => {
+    dirs = [...new Set(next)]
+    for (const d of dirs) seen.add(d)
+  }
+  for (const m of command.matchAll(STEP)) {
+    const [, push, pop, cd, globals, commit, open, close] = m
+    const after = command.slice((m.index ?? 0) + m[0].length)
+    const to = push ?? cd
+    if (to !== undefined) {
+      if (push !== undefined) stack.push(dirs)
+      const target = unquote(to)
+      const moved = target === '-' ? [...seen] : dirs.map(d => under(d, target))
+      // A cd before || may have failed, and the command goes on where it was.
+      go(/^\s*\|\|/.test(after) ? [...dirs, ...moved] : moved)
+    } else if (pop !== undefined) {
+      go(stack.pop() ?? [...seen])
+    } else if (open !== undefined) {
+      stack.push(dirs)
+    } else if (close !== undefined) {
+      go(stack.pop() ?? [...dirs, ''])
+    } else if (commit !== undefined) {
+      const extra = gitDirs(globals ?? '')
+      for (const d of dirs) out.add(extra.reduce(under, d))
+    }
+  }
+  return [...out]
 }
+
+// git subcommands that move HEAD, the branches, or the refs, and so change what the band shows.
+export const changesRepo = (command: string) =>
+  new RegExp(
+    `${GIT}(?:switch|checkout|commit|merge|rebase|worktree|reset|branch|pull|revert|cherry-pick|am|stash|fetch|init|remote\\s+set-head)\\b`,
+    'i',
+  ).test(command)
 
 // Which laa skill a skill prompt is, from the heading every laa skill starts with ("# /laa:fix").
 export const laaSkillOf = (prompt: string) => /^#\s*\/laa:([a-z-]+)\b/m.exec(prompt)?.[1] ?? null
@@ -72,6 +145,11 @@ export const TRACKED = [...PIPELINES, 'review', 'adopt', 'forge', 'evolve', 'res
 export const LOCAL_DIR = '.claude/laa/local'
 export const REVIEW_FILE = `${LOCAL_DIR}/last-review.md`
 export const journalFile = (branch: string) => `${LOCAL_DIR}/runs/${branch.replace(/[\\/]/g, '-')}.md`
+// /laa:build moves through one branch per milestone, so it keeps one journal for the whole build.
+export const BUILD_JOURNAL = `${LOCAL_DIR}/runs/build.md`
+
+// The run a journal says is paused: one that hasn't finished or stopped.
+export const isPaused = (j: Journal | null): j is Journal => j !== null && j.status !== 'done' && j.status !== 'stopped'
 
 export const countOpenLearnings = (text: string) =>
   text.split(/\r?\n/).filter(line => /^- status: open\b/.test(line)).length
