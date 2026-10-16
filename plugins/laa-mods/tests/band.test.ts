@@ -158,6 +158,13 @@ describe('status band', () => {
     expect(seen.git.length).toBe(before)
   })
 
+  test('a git run that times out during a refresh fails open: the band still shows the branch', async ($, on) => {
+    await setUp($, on, { branch: 'feat/export', mapAge: 3, rejects: 'log -1' })
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect(await ui.find({ type: 'Text', text: 'feat/export' })).toBeDefined()
+    await ui.unmount()
+  })
+
   test('hides a journal that finished', async ($, on) => {
     await setUp($, on, {
       branch: 'feat/csv-export',

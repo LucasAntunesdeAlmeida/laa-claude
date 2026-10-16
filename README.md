@@ -167,7 +167,7 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
 
 The guard's scope is the `guard` option in `/config`: `adopted` (default: repos where `.claude/laa/` holds `learnings.md` or `project-map.md`), `always` (every git repo), or `off`.
 
-**Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it and `claude plugin test ./plugins/laa-mods` runs its tests. The mods API is early access and can change between Claude Code releases.
+**Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it and `claude plugin test ./plugins/laa-mods` runs its tests. CI has no session to write the declarations, so it downloads the published copy (`mods/types/claude-code.d.ts` in the `anthropics/claude-code` repo) to `plugins/laa-mods/.claude-plugin/types/claude-code/index.d.ts` and fails if it can't. That copy can lag behind the Claude Code release the mod is written against. The mods API is early access and can change between Claude Code releases.
 
 ## Spinner tips (optional)
 To learn the toolkit while Claude works, add these to `~/.claude/settings.json`. They join Claude Code's own tips under a `laa` label, and each waits three sessions before it shows again. Tip objects and `label` only work from user settings; project settings take plain strings only.

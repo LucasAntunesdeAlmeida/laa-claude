@@ -21,6 +21,14 @@ describe('/laa-help', () => {
     expect(text).toContain('**Suggested** `/laa:evolve`: 3 learnings are waiting')
   })
 
+  test('still answers when git times out, as if outside a repo', async ($, on) => {
+    fakeRepo(on, { git: 'timeout' })
+    const help = String((await $.command.run(commandRun('laa-help'))).text)
+    expect(help).toContain('/laa:fix')
+    expect(help).not.toContain('failed')
+    expect(String((await $.command.run(commandRun('laa-learnings'))).text)).toContain('is not in a git repository')
+  })
+
   test('draws the row with the same content in the terminal', async ($, on) => {
     fakeRepo(on, { branch: 'feat/export' })
     on('ui.render', ($, e) => $.ui.resolve(e).Box({ key: 'engine' }))

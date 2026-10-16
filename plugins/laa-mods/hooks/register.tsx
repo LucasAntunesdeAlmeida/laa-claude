@@ -66,12 +66,28 @@ function blocked($: Engine, repo: Where, what: string, short: string) {
   return { deny: denial(repo, what) }
 }
 
-// A git command's answer; any exit code is one. It rejects when git can't start or overruns its time,
-// and the guard's callers let that rejection deny the call rather than read it as "no repo".
+// A git run that couldn't start or overran its time.
+class GitFailed extends Error {}
+
+// A git command's answer; any exit code is one. It rejects with GitFailed when git can't start or overruns
+// its time, and the guard's callers let that rejection deny the call rather than read it as "no repo".
 async function git($: Engine, cwd: string, ...args: string[]) {
-  const run = await $.process.run(['git', ...args], { cwd, timeoutMs: 5000 })
-  return { ok: run.exitCode === 0, out: run.stdout.trim() }
+  try {
+    const run = await $.process.run(['git', ...args], { cwd, timeoutMs: 5000 })
+    return { ok: run.exitCode === 0, out: run.stdout.trim() }
+  } catch (err) {
+    throw new GitFailed(String(err))
+  }
 }
+
+// Outside the guard (the band, the commands, the panes), a git run that failed reads as `fallback`,
+// as one that ran and failed would; anything else still throws.
+const orElse = <T,>(p: Promise<T>, fallback: T) =>
+  p.catch((err: unknown) => {
+    if (err instanceof GitFailed) return fallback
+    throw err
+  })
+const NO_ANSWER = { ok: false, out: '' }
 
 // Whether git starts at all. Asked only after a git run rejected, to tell a missing git from one that failed.
 async function canRunGit($: Engine) {
@@ -150,14 +166,15 @@ async function hasCommitsAt($: Engine, top: string) {
 }
 
 // The repository a path belongs to, read from its nearest existing directory; null outside git.
+// Not a guard: a git run that fails reads as no answer (no repo, no branch, no commits).
 async function repoAt($: Engine, path: string): Promise<Repo | null> {
-  const top = await topAt($, path)
+  const top = await orElse(topAt($, path), null)
   if (!top) return null
   const [b, hasCommits, isAdopted, common] = await Promise.all([
-    branchAt($, top),
-    hasCommitsAt($, top),
+    orElse(branchAt($, top), { branch: null, isDefault: false }),
+    orElse(hasCommitsAt($, top), false),
     isAdoptedAt($, top),
-    git($, top, 'rev-parse', '--path-format=absolute', '--git-common-dir'),
+    orElse(git($, top, 'rev-parse', '--path-format=absolute', '--git-common-dir'), NO_ANSWER),
   ])
   // The main checkout holds the git directory; from a worktree it's the parent of the common .git.
   const main = common.ok && /\/\.git$/.test(slash(common.out)) ? slash(common.out).replace(/\/\.git$/, '') : top
@@ -226,8 +243,8 @@ const mutedKey = (top: string) => `mutedMap:${slash(top).toLowerCase()}`
 async function statusOf($: Engine, repo: Repo): Promise<Status> {
   let mapAge: number | null = null
   if (await $.fs.exists(`${repo.top}/${MAP_FILE}`)) {
-    const last = await git($, repo.top, 'log', '-1', '--format=%H', '--', MAP_FILE)
-    const count = last.ok && last.out ? await git($, repo.top, 'rev-list', '--count', `${last.out}..HEAD`) : null
+    const last = await orElse(git($, repo.top, 'log', '-1', '--format=%H', '--', MAP_FILE), NO_ANSWER)
+    const count = last.ok && last.out ? await orElse(git($, repo.top, 'rev-list', '--count', `${last.out}..HEAD`), NO_ANSWER) : null
     mapAge = count?.ok ? Number(count.out) || 0 : 0
   }
   // Journals live in the main checkout, so a run in a worktree and the main checkout see the same one.
@@ -666,7 +683,7 @@ export const register: Register = (on, options) => {
     } else if (s.openLearnings > 0) {
       parts.push(<Text key="learnings" dimColor>{plural(s.openLearnings, 'open learning')}</Text>)
     }
-    const mute = <Button key="muteMap" label="mute" hotkey="m" plain onPress={() => muteMap($)} />
+    const mute = <Button key="muteMap" label="mute" hotkey="m" plain onPress={() => muteMap($).catch(() => undefined)} />
     if (s.mapAge === null && !s.isMapMuted) {
       parts.push(
         <Box key="map">
