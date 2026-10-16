@@ -8,7 +8,7 @@ description: Conventions for a repo's README, onboarding, and agent-facing docs 
 **Precedence: the repo's existing docs structure, `CLAUDE.md`, and `.claude/laa/project-map.md` override everything here.** Extend what's there before restructuring it.
 
 ## Where docs live
-- GitHub looks for `README`, `CONTRIBUTING`, `SECURITY`, `SUPPORT`, `CODE_OF_CONDUCT`, and `CODEOWNERS` in `.github/`, then the repo root, then `docs/`. Search all three before you conclude a file is missing, and edit the one that exists instead of adding a second copy.
+- GitHub reads `README`, `CONTRIBUTING`, `SECURITY`, `SUPPORT`, `CODE_OF_CONDUCT`, and `CODEOWNERS` from `.github/`, root, or `docs/` (for README and CODEOWNERS, in that order). Search all three before you conclude a file is missing, and edit the one that exists instead of adding a second copy.
 - Agent-facing docs: `AGENTS.md` and `CLAUDE.md` (root or nested) also list build, test, and run commands, env vars, and conventions. Treat them as docs.
 
 ## Truth first
@@ -23,7 +23,10 @@ description: Conventions for a repo's README, onboarding, and agent-facing docs 
 ## Same-change rule
 A change that alters setup, configuration, run or test commands, ports, prerequisites, or required services updates, **in the same PR**, every doc that mentions the old state: the README, onboarding docs (in any of the three locations), `AGENTS.md`, `CLAUDE.md`, and `.env.example`. Grep them for the old name or value.
 
-If `CHANGELOG.md` exists, a user-facing change also adds an entry under `## [Unreleased]`, in the right group: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security`. Write it for users (what changed and what they must do), never as a dump of commit messages. Don't create a changelog the repo doesn't have unless asked.
+**Changelog.** Check how the repo produces it first:
+- A generator is configured (`release-please-config.json`, `.release-please-manifest.json`, `.releaserc*`, `release.config.*`, a `release` key in `package.json`, `cliff.toml`, or `.changeset/`): don't edit `CHANGELOG.md`. With changesets, add a `.changeset/<name>.md`. With the others, say nothing: the generator builds release notes from commits, which is laa-git's job.
+- A hand-kept Keep a Changelog file (it has a `## [Unreleased]` heading or links keepachangelog.com) and no generator: a user-facing change adds an entry under `## [Unreleased]`, in the right group: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, or `Security`. Write it for users (what changed and what they must do), never as a dump of commit messages.
+- Don't create a changelog the repo doesn't have unless asked.
 
 ## Humans vs agents
 - The README onboards humans. `AGENTS.md`/`CLAUDE.md` hold the detail agents need (exact commands, code style, gotchas).
@@ -62,7 +65,7 @@ Don't mix explanation into a quickstart; link to it. Move pages one at a time as
 - **Day-one checklist**: from "access granted" to "first PR merged".
 
 ## Community health files
-Add one when the project takes outside reports or contributions, or the user asks. Extend an existing one rather than replacing it. Put new ones in `.github/` unless the repo keeps them elsewhere.
+Add one when the project takes outside reports or contributions, or the user asks. First check for an account default in the owner's public `.github` repo: `gh api repos/{owner}/{repo}/community/profile` shows inherited files with URLs in `{owner}/.github`, and `gh api repos/{owner}/.github/contents` lists the rest (e.g. `SECURITY.md`). Don't override a default unasked. Extend an existing one rather than replacing it. Put new ones in `.github/` unless the repo keeps them elsewhere.
 - `SECURITY.md`: supported versions and the actual reporting channel (an address or the advisory form). Never "open a public issue". GitHub's private vulnerability reporting is a separate repo setting; mention it only if it's enabled.
 - `SUPPORT.md`: where to ask questions and what isn't supported.
 - `CODE_OF_CONDUCT.md`: adopt an existing code and name a real enforcement contact; don't write one from scratch.
@@ -87,5 +90,5 @@ Add one when the project takes outside reports or contributions, or the user ask
 - [ ] Every command and env var traces back to a source file, and the quickstart was run (or the gaps are marked `TODO(docs)`).
 - [ ] The configuration table matches `.env.example` and the config loader.
 - [ ] Setup or config changes in this PR are reflected in the README, onboarding docs (`.github/`, root, `docs/`), `AGENTS.md`, and `CLAUDE.md`.
-- [ ] If `CHANGELOG.md` exists, user-facing changes have an entry under `## [Unreleased]`.
+- [ ] If the repo keeps a hand-written Keep a Changelog file, user-facing changes have an entry under `## [Unreleased]` (with a generator, follow it instead).
 - [ ] There are no secrets, real hosts, or absolute local paths, and `.env` is gitignored.

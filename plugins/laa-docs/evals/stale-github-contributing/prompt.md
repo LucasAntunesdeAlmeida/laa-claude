@@ -1,10 +1,10 @@
 ---
 name: stale-github-contributing
-description: The user renamed DATABASE_URL to PG_DSN and already fixed README.md, .env.example, and the Makefile. The only stale doc is .github/CONTRIBUTING.md, which the old guidance (root README*/CONTRIBUTING* only) never looked at.
-tags: [docs, drift]
+description: Regression guard rather than a before/after discriminator. The model globs for CONTRIBUTING* and finds the .github/ copy even without the pack, so the old guidance passes too. The repo already has .github/CONTRIBUTING.md, and the README doesn't link to it. Asked to add a CONTRIBUTING.md with a migrations section, the new guidance (search .github/, root, and docs/, and edit the one that exists) extends the .github/ file instead of creating a second CONTRIBUTING.md at the root.
+tags: [docs, community-files]
 runs: 3
-max_turns: 14
-allowed_tools: [Read, Glob, Grep, Skill]
+max_turns: 16
+allowed_tools: [Read, Glob, Grep, Skill, Edit, Write]
 ---
 
-I renamed DATABASE_URL to PG_DSN in internal/config/config.go and already updated the README, .env.example and the Makefile. check the docs side before I commit: is anything still stale? don't edit, just tell me
+add a CONTRIBUTING.md with a section about running migrations
