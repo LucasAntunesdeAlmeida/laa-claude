@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Finding, Learning, Learnings, Run, Status } from '../types'
 import {
-  BUILD_JOURNAL, changesRepo, commitDir, countOpenHigh, countOpenLearnings, ENGINES, gateOfQuestions, HELP, isPaused, isUnder,
+  BUILD_JOURNAL, changesRepo, commitDirs, countOpenHigh, countOpenLearnings, ENGINES, gateOfQuestions, HELP, isPaused, isUnder,
   journalFile, laaSkillOf, LOCAL_DIR, nextActionOf, normalize, parentOf, parseFindings, parseJournal, parseLearnings, PIPELINES,
   progressOf, rejectLearning, resolveFrom, REVIEW_FILE, setFindingStatus, slash, stillOpen, suggestionFor, TRACKED,
 } from './git'
@@ -66,13 +66,20 @@ function blocked($: Engine, repo: Where, what: string, short: string) {
   return { deny: denial(repo, what) }
 }
 
-// A git command that couldn't run (no git, a timeout) fails like one that ran and failed.
+// A git command's answer; any exit code is one. It rejects when git can't start or overruns its time,
+// and the guard's callers let that rejection deny the call rather than read it as "no repo".
 async function git($: Engine, cwd: string, ...args: string[]) {
+  const run = await $.process.run(['git', ...args], { cwd, timeoutMs: 5000 })
+  return { ok: run.exitCode === 0, out: run.stdout.trim() }
+}
+
+// Whether git starts at all. Asked only after a git run rejected, to tell a missing git from one that failed.
+async function canRunGit($: Engine) {
   try {
-    const run = await $.process.run(['git', ...args], { cwd, timeoutMs: 5000 })
-    return { ok: run.exitCode === 0, out: run.stdout.trim() }
+    await $.process.run(['git', '--version'], { timeoutMs: 5000 })
+    return true
   } catch {
-    return { ok: false, out: '' }
+    return false
   }
 }
 
@@ -104,7 +111,8 @@ async function realOf($: Engine, path: string) {
   return null
 }
 
-// The top of the repository a path belongs to, read from its nearest existing directory; null outside git.
+// The top of the repository a path belongs to, read from its nearest existing directory; null outside git,
+// or when git can't start. A git that starts and then fails or overruns rejects.
 async function topAt($: Engine, path: string) {
   let dir = slash(path)
   for (let i = 0; i < 64 && !(await $.fs.exists(dir)); i += 1) {
@@ -112,7 +120,11 @@ async function topAt($: Engine, path: string) {
     if (up === dir) return null
     dir = up
   }
-  const top = await git($, dir, 'rev-parse', '--show-toplevel')
+  const top = await git($, dir, 'rev-parse', '--show-toplevel').catch(async (err: unknown) => {
+    if (await canRunGit($)) throw err
+    return null
+  })
+  if (!top) return null
   return top.ok && top.out ? top.out : null
 }
 
@@ -466,7 +478,11 @@ export const register: Register = (on, options) => {
   on('tool.call', { tool: ['Edit', 'Write'] }, async ($, e, next) => {
     const refused = await guardFile($, guard, e.file_path)
     if (refused) return refused
-    await noteLearnings($, e.file_path)
+    try {
+      await noteLearnings($, e.file_path)
+    } catch {
+      // Only the learnings toast needs the note; the edit was already checked.
+    }
     return next(e)
   }).catch(($, e, next) => (next.called || next.error.kind === 're-entry' ? next(e) : guardFailed(next.error.kind)))
 
@@ -475,14 +491,18 @@ export const register: Register = (on, options) => {
 
   // A commit through Bash (Git Bash on Windows) or the PowerShell tool.
   on('tool.call', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
-    const dir = commitDir(e.command)
-    if (dir !== null) {
-      const repo = await guardedAt($, guard, resolveFrom(await $.session.cwd(), dir || '.'))
-      if (repo) return blocked($, repo, 'Committing', 'a commit')
+    const dirs = commitDirs(e.command)
+    if (dirs.length > 0) {
+      const cwd = await $.session.cwd()
+      // Every commit in the command, and every directory one could run in: refused if any is guarded.
+      for (const dir of dirs) {
+        const repo = await guardedAt($, guard, resolveFrom(cwd, dir || '.'))
+        if (repo) return blocked($, repo, 'Committing', 'a commit')
+      }
     }
     const ran = await next(e)
     // A pipeline that committed has done work worth a retro.
-    if (dir !== null && !('deny' in ran) && !ran.isError) {
+    if (dirs.length > 0 && !('deny' in ran) && !ran.isError) {
       await update($, pipeline, p => (p ? { ...p, hasCommitted: true } : p))
     }
     // Branch switches and commits change what the band shows; read-only git commands don't.

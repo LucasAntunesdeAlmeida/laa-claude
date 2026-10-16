@@ -19,8 +19,11 @@ export type Fake = {
   worktreeOf?: string
   // Symbolic links: the link's path, and where it leads.
   links?: Record<string, string>
-  // How git fails: it isn't there (every run rejects), or every run times out (and rejects).
+  // How git fails: it isn't there (every run rejects), or it starts (`git --version` answers) but every
+  // other run times out (and rejects).
   git?: 'missing' | 'timeout'
+  // Only the git runs whose arguments start with this time out.
+  rejects?: string
   // The file system refuses every exists check, so the plugin can't tell where anything is.
   isFsDown?: boolean
   // Runs inside every tool call the plugin lets through, before the tool answers: what a test reads mid-call.
@@ -91,7 +94,8 @@ export function fakeRepo(on: On, f: Fake = {}) {
     seen.git.push(`${cwd}: ${args}`)
     // $.process.run rejects when the program can't start or overruns its timeout.
     if (f.git === 'missing') return { deny: 'spawn git ENOENT' }
-    if (f.git === 'timeout') return { deny: 'git timed out after 5000 ms' }
+    if (args === '--version') return { value: ok('git version 2.99.0') }
+    if (f.git === 'timeout' || (f.rejects !== undefined && args.startsWith(f.rejects))) return { deny: 'git timed out after 5000 ms' }
     const inRepo = real(cwd) === ROOT || real(cwd).startsWith(`${ROOT}/`)
     if (!inRepo) return { value: { ...fail, exitCode: 128 } }
     if (args === 'rev-parse --show-toplevel') return { value: ok(ROOT) }

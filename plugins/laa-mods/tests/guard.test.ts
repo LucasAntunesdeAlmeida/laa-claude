@@ -150,13 +150,75 @@ describe('default-branch guard', () => {
     expect(denied(await $.tool.call(edit(`${ROOT}/.claude/laa/local/src/a.go`)))).toBe(true)
   })
 
-  for (const failure of ['missing', 'timeout'] as const) {
-    test(`treats git that is ${failure} as no repo: nothing to guard`, async ($, on) => {
-      fakeRepo(on, { git: failure })
-      expect(denied(await $.tool.call(edit(`${ROOT}/src/a.go`)))).toBe(false)
-      expect(denied(await $.tool.call(bash('git commit -m x')))).toBe(false)
+  test('treats a missing git as no repo: nothing to guard', async ($, on) => {
+    fakeRepo(on, { git: 'missing' })
+    expect(denied(await $.tool.call(edit(`${ROOT}/src/a.go`)))).toBe(false)
+    expect(denied(await $.tool.call(bash('git commit -m x')))).toBe(false)
+  })
+
+  for (const [name, fake] of [
+    ['every git run times out', { git: 'timeout' }],
+    ['only symbolic-ref times out', { rejects: 'symbolic-ref' }],
+    ['only the HEAD check times out', { rejects: 'rev-parse -q --verify' }],
+  ] as const) {
+    test(`fails closed when git starts but ${name}`, async ($, on) => {
+      fakeRepo(on, fake)
+      for (const call of [edit(`${ROOT}/src/a.go`), bash('git commit -m x'), powershell('git commit -m x')]) {
+        const res = await $.tool.call(call)
+        expect(denied(res)).toBe(true)
+        expect(String(res.deny)).toContain('guard failed')
+      }
     })
   }
+
+  test('a git that fails with an exit code is an answer: a detached HEAD is no default branch', async ($, on) => {
+    fakeRepo(on, { branch: null })
+    expect(denied(await $.tool.call(edit(`${ROOT}/src/a.go`)))).toBe(false)
+    expect(denied(await $.tool.call(bash('git commit -m x')))).toBe(false)
+  })
+
+  test('restores the directory a subshell, a block, or Pop-Location left', async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash('(cd C:/other && make); git commit -m x')))).toBe(true)
+    expect(denied(await $.tool.call(bash('{ cd C:/other; make; }; git commit -m x')))).toBe(true)
+    expect(denied(await $.tool.call(powershell('Push-Location C:/other; make; Pop-Location; git commit -m x')))).toBe(true)
+    expect(denied(await $.tool.call(bash('pushd C:/other && popd && git commit -m x')))).toBe(true)
+    // Brackets inside quotes are text, not a subshell.
+    expect(denied(await $.tool.call(bash('(cd C:/other && echo ")" && git commit -m x)')))).toBe(false)
+  })
+
+  test('popd goes back one level of the stack', async ($, on) => {
+    fakeRepo(on, { cwd: 'C:/other' })
+    expect(denied(await $.tool.call(bash(`pushd ${ROOT}; pushd C:/other; popd; git commit -m x`)))).toBe(true)
+    expect(denied(await $.tool.call(bash(`pushd C:/other; pushd ${ROOT}; popd; git commit -m x`)))).toBe(false)
+  })
+
+  test('checks where the commit was when a cd may have failed, or went back with cd -', async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash('cd C:/nope || true; git commit -m x')))).toBe(true)
+    expect(denied(await $.tool.call(bash('cd C:/other && cd - && git commit -m x')))).toBe(true)
+    expect(denied(await $.tool.call(bash('cd - && git commit -m x')))).toBe(true)
+  })
+
+  test('lets the worktree flow through: cd into the worktree, then commit', async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash('cd ../other && git commit -m x')))).toBe(false)
+    expect(denied(await $.tool.call(powershell('Set-Location ../other; git commit -m x')))).toBe(false)
+  })
+
+  test('checks every commit in a command, each from its own directory', async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash('git -C C:/other commit -m a; git commit -m b')))).toBe(true)
+    expect(denied(await $.tool.call(bash('cd C:/other && git commit -m a && cd C:/r && git commit -m b')))).toBe(true)
+    expect(denied(await $.tool.call(bash('git -C C:/other commit -m a; git -C C:/other commit -m b')))).toBe(false)
+  })
+
+  test('sees a commit behind any git option', async ($, on) => {
+    fakeRepo(on, { cwd: 'C:/other' })
+    expect(denied(await $.tool.call(bash(`git --no-pager -C ${ROOT} commit -m x`)))).toBe(true)
+    expect(denied(await $.tool.call(bash(`git --work-tree=${ROOT} --git-dir=${ROOT}/.git commit -m x`)))).toBe(true)
+    expect(denied(await $.tool.call(bash(`git -c user.name=x -C ${ROOT} commit -m x`)))).toBe(true)
+  })
 
   test('fails closed: a guard that throws refuses the edit or commit it could not check', async ($, on) => {
     fakeRepo(on, { isFsDown: true })

@@ -60,29 +60,79 @@ const unquote = (s: string) => s.replace(/^(["'])(.*)\1$/, '$2')
 // `dir` taken from `base`: a relative one goes under it.
 const under = (base: string, dir: string) => (base === '' || isAbsolute(dir) ? dir : `${base.replace(/[\\/]+$/, '')}/${dir}`)
 
-const ARG = `("[^"]*"|'[^']*'|[^\\s;&|)]+)`
-// A directory change starting a command: `cd` or `pushd` in a POSIX shell, and in PowerShell
-// `Set-Location` or `Push-Location` (or their `sl`, `chdir` aliases), with an optional -Path or -LiteralPath.
-const CHDIR = new RegExp(`(?:^|[;&|(\\n{])\\s*(?:cd|chdir|pushd|sl|set-location|push-location)(?:\\s+-(?:literal)?path)?\\s+${ARG}`, 'gi')
-// `git commit` (PowerShell's `git.exe` and `& git` too), after any `-C <dir>` and `-c <key=value>` options.
-const COMMIT = /(?:^|[;&|(\n{]\s*|\s)git(?:\.exe)?((?:\s+-[cC]\s+(?:"[^"]*"|'[^']*'|\S+))*)\s+commit\b/i
+// One argument: quoted, or a word that ends at a space, a separator, or a bracket.
+const WORD = `(?:"[^"]*"|'[^']*'|[^\\s;&|(){}]+)`
+const ARG = `(${WORD})`
+// What can start a command: the start of the text, a separator, or an opening ( or {.
+const START = '(?<=(?:^|[;&|(\\n{])\\s*)'
+// git's options before its subcommand: -C <dir>, -c <key=value>, and the long ones (--no-pager, --git-dir=<dir>).
+const GLOBALS = `((?:\\s+(?:-[cC]\\s+${WORD}|--(?:git-dir|work-tree|namespace|exec-path|config-env)\\s+${WORD}|--?[\\w-]+(?:=${WORD})?))*)`
+// `git` as a command (PowerShell's `git.exe` and `& git` too), then its options.
+const GIT = `(?<=(?:^|[;&|(\\n{])\\s*|\\s)git(?:\\.exe)?${GLOBALS}\\s+`
+// One step of a Bash or PowerShell command, in order: a quoted string (skipped whole, so nothing in it counts);
+// `pushd`/`Push-Location` <dir>; `popd`/`Pop-Location`; `cd`/`Set-Location` <dir> (or their `chdir`, `sl` aliases,
+// with an optional -Path or -LiteralPath); a `git commit`; an opening ( or { and its closing ) or }.
+const STEP = new RegExp(
+  `"[^"]*"|'[^']*'` +
+    `|${START}(?:pushd|push-location)(?:\\s+-(?:literal)?path)?\\s+${ARG}` +
+    `|${START}(popd|pop-location)\\b` +
+    `|${START}(?:cd|chdir|sl|set-location)(?:\\s+-(?:literal)?path)?\\s+${ARG}` +
+    `|${GIT}(commit)\\b` +
+    '|([({])|([)}])',
+  'gi',
+)
 
-// Where a Bash or PowerShell command runs `git commit`, if it does: the directory the `cd`s before it
-// and its `-C` options lead to, relative to the session's directory ('' for that directory itself).
-// null when it doesn't commit.
-export const commitDir = (command: string): string | null => {
-  const commit = COMMIT.exec(command)
-  if (!commit) return null
-  let dir = ''
-  for (const cd of command.slice(0, commit.index).matchAll(CHDIR)) if (cd[1]) dir = under(dir, unquote(cd[1]))
-  // -C is the directory; -c (lowercase) sets a config value.
-  for (const c of (commit[1] ?? '').matchAll(/-C\s+("[^"]*"|'[^']*'|\S+)/g)) if (c[1]) dir = under(dir, unquote(c[1]))
-  return dir
+// The directories git's options before a subcommand point it at: -C, --work-tree, and the checkout of a --git-dir.
+const gitDirs = (options: string) =>
+  [...options.matchAll(new RegExp(`(?:-C\\s+|--work-tree(?:=|\\s+)|--git-dir(?:=|\\s+))${ARG}`, 'g'))].map(m => {
+    const dir = unquote(m[1] ?? '')
+    return m[0].startsWith('--git-dir') ? dir.replace(/[\\/]\.git[\\/]*$/, '') || '.' : dir
+  })
+
+// Every directory a Bash or PowerShell command may run `git commit` in, relative to the session's directory
+// ('' for that directory itself); empty when it doesn't commit. It follows the cds before each commit, the
+// directory stack that ( { pushd and Push-Location save and ) } popd and Pop-Location restore, and each
+// commit's -C. Where a parse can't be sure (a cd that may fail before ||, `cd -`, a popd past what the command
+// pushed), it keeps every directory the commit could be in, so the guard checks them all.
+export const commitDirs = (command: string): string[] => {
+  let dirs = ['']
+  const stack: string[][] = []
+  const seen = new Set(dirs)
+  const out = new Set<string>()
+  const go = (next: string[]) => {
+    dirs = [...new Set(next)]
+    for (const d of dirs) seen.add(d)
+  }
+  for (const m of command.matchAll(STEP)) {
+    const [, push, pop, cd, globals, commit, open, close] = m
+    const after = command.slice((m.index ?? 0) + m[0].length)
+    const to = push ?? cd
+    if (to !== undefined) {
+      if (push !== undefined) stack.push(dirs)
+      const target = unquote(to)
+      const moved = target === '-' ? [...seen] : dirs.map(d => under(d, target))
+      // A cd before || may have failed, and the command goes on where it was.
+      go(/^\s*\|\|/.test(after) ? [...dirs, ...moved] : moved)
+    } else if (pop !== undefined) {
+      go(stack.pop() ?? [...seen])
+    } else if (open !== undefined) {
+      stack.push(dirs)
+    } else if (close !== undefined) {
+      go(stack.pop() ?? [...dirs, ''])
+    } else if (commit !== undefined) {
+      const extra = gitDirs(globals ?? '')
+      for (const d of dirs) out.add(extra.reduce(under, d))
+    }
+  }
+  return [...out]
 }
 
-// git subcommands that move HEAD or the branches, and so change what the band shows.
+// git subcommands that move HEAD, the branches, or the refs, and so change what the band shows.
 export const changesRepo = (command: string) =>
-  /(?:^|[;&|(\n{]\s*|\s)git(?:\.exe)?(?:\s+-[cC]\s+(?:"[^"]*"|'[^']*'|\S+))*\s+(?:switch|checkout|commit|merge|rebase|worktree|reset|branch|pull|revert|cherry-pick)\b/i.test(command)
+  new RegExp(
+    `${GIT}(?:switch|checkout|commit|merge|rebase|worktree|reset|branch|pull|revert|cherry-pick|am|stash|fetch|init|remote\\s+set-head)\\b`,
+    'i',
+  ).test(command)
 
 // Which laa skill a skill prompt is, from the heading every laa skill starts with ("# /laa:fix").
 export const laaSkillOf = (prompt: string) => /^#\s*\/laa:([a-z-]+)\b/m.exec(prompt)?.[1] ?? null

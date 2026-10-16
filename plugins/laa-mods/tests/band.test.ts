@@ -145,6 +145,19 @@ describe('status band', () => {
     expect(seen.git.length).toBeGreaterThan(before)
   })
 
+  test('reads the repo again after am, stash, fetch, init, and remote set-head, behind any git option', async ($, on) => {
+    const seen = await setUp($, on, { branch: 'feat/export', mapAge: 1 })
+    for (const command of ['git am < x.patch', 'git stash push -m wip', 'git fetch origin', 'git init', 'git remote set-head origin -a',
+      'git --no-pager stash list', 'git --git-dir=C:/r/.git fetch', 'git -C C:/r am x.patch']) {
+      const before = seen.git.length
+      await $.tool.call(bash(command))
+      expect(seen.git.length).toBeGreaterThan(before)
+    }
+    const before = seen.git.length
+    await $.tool.call(bash('git --no-pager log -1 && git remote -v'))
+    expect(seen.git.length).toBe(before)
+  })
+
   test('hides a journal that finished', async ($, on) => {
     await setUp($, on, {
       branch: 'feat/csv-export',
