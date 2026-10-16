@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: patch-endpoint-headers-and-problem-json
+context:
+  scaffold_script: fixture.sh
