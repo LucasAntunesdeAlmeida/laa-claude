@@ -16,7 +16,7 @@ description: Modern Python backend conventions (project setup, uv, layout, typin
   - Production images use `uv sync --locked --no-dev`. Tools that need a standard lockfile get `uv export --format pylock.toml` (PEP 751).
 - Use a `src/` layout (`src/<package>/`), with `tests/` mirroring the package.
 - Lint and format with Ruff (it replaces flake8, isort, and black). Type-check with mypy or pyright in strict mode.
-- Ruff's defaults (https://docs.astral.sh/ruff/default-rules/) leave out the FastAPI rules, most security rules, and naive `datetime.now()`. Add them so `ruff check` backs the review:
+- As of Ruff 0.17, the defaults (https://docs.astral.sh/ruff/default-rules/) leave out the FastAPI rules, most security rules, and naive `datetime.now()`. Add them so `ruff check` backs the review:
   ```toml
   [tool.ruff.lint]
   # S301 pickle, S506 yaml.load, S602 shell=True, S608 SQL built from strings, DTZ005 naive now()
@@ -58,7 +58,7 @@ description: Modern Python backend conventions (project setup, uv, layout, typin
 - Never block inside `async def`: no `requests`, `time.sleep`, or sync DB drivers. Use `httpx.AsyncClient`, `asyncio.sleep`, and async drivers (asyncpg, psycopg 3). For unavoidable blocking code, use `await asyncio.to_thread(...)`.
 - Give every outbound call a timeout. Bound a block of awaits with `async with asyncio.timeout(seconds):` (3.11+).
 - Use `asyncio.TaskGroup` for fan-out rather than `gather()`: when one task fails, TaskGroup cancels the others, while `gather()` leaves them running. Bound fan-out with `asyncio.Semaphore`.
-- Never swallow cancellation. If you catch `asyncio.CancelledError`, clean up and re-raise it. Don't wrap awaits in bare `except:` or `except BaseException:`. Prefer `try/finally` for cleanup.
+- Never swallow cancellation. If you catch `asyncio.CancelledError`, clean up and re-raise it. Don't wrap awaits in bare `except:` or `except BaseException:`, even to log and return a fallback. Prefer `try/finally` for cleanup. The one exception is awaiting a task you just cancelled yourself: `task.cancel()` then `with suppress(asyncio.CancelledError): await task`.
 - Keep a reference to every task you create, or it can be garbage-collected mid-flight (Ruff `RUF006`).
 - If the stack is sync (Django, Flask), stay sync. Don't sprinkle async into it.
 
@@ -79,7 +79,7 @@ description: Modern Python backend conventions (project setup, uv, layout, typin
 - Use structured logging (`structlog`, or stdlib `logging` with a JSON formatter) carrying a request/trace id. No `print`. Instrument FastAPI, SQLAlchemy, and httpx with OpenTelemetry.
 - Hash passwords with argon2 or bcrypt. Use the `secrets` module for tokens and `hmac.compare_digest` to compare secrets.
 - Never `pickle.loads`, `yaml.load`, or `eval` untrusted data (use `yaml.safe_load`). Call `subprocess` with an argument list, never `shell=True` with user input.
-- Extract untrusted tar archives with `extractall(filter="data")` on Python 3.12–3.13 (it's the default from 3.14).
+- Before Python 3.14, extract untrusted tar archives with `extractall(filter="data")` (3.12+, backported to 3.8.17, 3.9.17, 3.10.12, and 3.11.4; check `hasattr(tarfile, "data_filter")`). From 3.14 it's the default.
 
 ## Testing
 - Use pytest with fixtures in `conftest.py`, and `pytest-asyncio` (or anyio) for async tests.

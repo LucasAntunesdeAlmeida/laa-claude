@@ -1,7 +1,10 @@
 #!/bin/sh
-# The orders service plus a background stock poller started from the lifespan. The poll loop
-# catches asyncio.CancelledError, logs it, and keeps looping, so shutdown (task.cancel()) and any
-# timeout around it never stop the task. Nothing else in the file is wrong enough to crowd it out.
+# The orders service plus a background stock poller started from the lifespan. The refresh helper
+# runs inside asyncio.timeout() and catches asyncio.CancelledError as if it were the timeout: it closes
+# the response and returns the cached levels. That also swallows shutdown's poller.cancel() when it
+# lands mid-refresh, so the loop keeps running and the lifespan's `await poller` never returns (and the
+# timeout never raises TimeoutError). The lifespan itself is correct: it cancels the task, awaits it
+# under suppress(CancelledError), then disposes the engine.
 set -eu
 sh "$(dirname "$0")/../_fixtures/fastapi-service.sh"
 
@@ -21,23 +24,26 @@ log = logging.getLogger(__name__)
 _levels: dict[str, int] = {}
 
 
-async def refresh(client: httpx.AsyncClient) -> None:
-    resp = await client.get(f"{settings.inventory_url}/levels", timeout=5.0)
-    resp.raise_for_status()
-    _levels.update(resp.json())
+async def _fetch_levels(client: httpx.AsyncClient) -> dict[str, int]:
+    resp: httpx.Response | None = None
+    try:
+        resp = await client.get(f"{settings.inventory_url}/levels")
+        resp.raise_for_status()
+        return resp.json()
+    except asyncio.CancelledError:
+        # The refresh timed out: drop the half-read response and keep serving the cached levels.
+        if resp is not None:
+            await resp.aclose()
+        log.warning("stock refresh timed out, keeping cached levels")
+        return dict(_levels)
 
 
 async def poll_forever(client: httpx.AsyncClient, interval: float = 30.0) -> None:
     while True:
-        try:
-            await refresh(client)
-            await asyncio.sleep(interval)
-        except asyncio.CancelledError:
-            log.warning("stock refresh cancelled, retrying")
-            continue
-        except httpx.HTTPError:
-            log.exception("stock refresh failed")
-            await asyncio.sleep(interval)
+        async with asyncio.timeout(5.0):
+            levels = await _fetch_levels(client)
+        _levels.update(levels)
+        await asyncio.sleep(interval)
 
 
 def level(sku: str) -> int:
@@ -47,7 +53,7 @@ PY
 cat > src/app/main.py <<'PY'
 import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 import httpx
 from fastapi import FastAPI
@@ -63,7 +69,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         poller = asyncio.create_task(poll_forever(client))
         yield
         poller.cancel()
-        await poller
+        with suppress(asyncio.CancelledError):
+            await poller
     await engine.dispose()
 
 
