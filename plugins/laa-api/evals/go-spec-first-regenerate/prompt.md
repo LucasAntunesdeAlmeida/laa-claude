@@ -1,10 +1,10 @@
 ---
 name: go-spec-first-regenerate
-description: A spec-first Go service generates internal/api/api.gen.go from api/openapi.yaml with oapi-codegen through go:generate. The old guidance only knew specs generated from code, so it treated the spec as hand-written and invited a matching hand edit to the generated Order struct. The answer edits the spec, regenerates with go generate, and leaves api.gen.go to the generator.
+description: Regression guard rather than a before/after discriminator. The generated file's `Code generated ... DO NOT EDIT.` header is enough for the model to refuse the hand edit without the pack, even with no go:generate directive and a prompt that names api.gen.go. A spec-first Go service generates internal/api/api.gen.go from api/openapi.yaml with oapi-codegen (a go.mod tool and cfg.yaml, no go:generate directive). The answer edits the spec, regenerates with oapi-codegen, and leaves api.gen.go to the generator.
 tags: [api, openapi, go, codegen]
 runs: 3
 max_turns: 12
 allowed_tools: [Read, Glob, Grep, Skill]
 ---
 
-orders need an optional free-text `note` field in the GET /orders/{id} response. what are the exact changes? show me the diffs, don't run anything
+add an optional free-text Note to orders: the Order struct in internal/api/api.gen.go, and the GET /orders/{id} response in api/openapi.yaml. show me the diffs, don't run anything

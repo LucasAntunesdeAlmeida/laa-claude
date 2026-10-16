@@ -1,30 +1,48 @@
 #!/bin/sh
 # Seeds an ASP.NET Core minimal API whose spec comes from the built-in generator:
 # Microsoft.AspNetCore.OpenApi (AddOpenApi/MapOpenApi) plus Microsoft.Extensions.ApiDescription.Server,
-# which writes api/openapi.json on every build. The committed api/openapi.json has no "generated" banner,
+# which writes api/openapi.json on every build. That wiring sits in the repo-root Directory.Build.props,
+# not the csproj. The committed api/openapi.json has no "generated" banner,
 # and the README calls it "the contract", so it looks hand-written. A new DELETE endpoint is in the code
 # only; the committed spec doesn't list it yet.
 set -eu
 
 mkdir -p src/Orders.Api api
 
+cat > Directory.Build.props <<'XML'
+<Project>
+
+  <!-- Shared settings for every project in the repo. -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(UsingMicrosoftNETSdkWeb)' == 'true'">
+    <OpenApiDocumentsDirectory>$(MSBuildThisFileDirectory)api</OpenApiDocumentsDirectory>
+    <OpenApiGenerateDocumentsOptions>--file-name openapi</OpenApiGenerateDocumentsOptions>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UsingMicrosoftNETSdkWeb)' == 'true'">
+    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>
+XML
+
 cat > src/Orders.Api/Orders.Api.csproj <<'XML'
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <OpenApiDocumentsDirectory>../../api</OpenApiDocumentsDirectory>
-    <OpenApiGenerateDocumentsOptions>--file-name openapi</OpenApiGenerateDocumentsOptions>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.0" />
-    <PackageReference Include="Microsoft.Extensions.ApiDescription.Server" Version="10.0.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
   </ItemGroup>
 
 </Project>
@@ -45,7 +63,7 @@ var orders = new ConcurrentDictionary<string, Order>();
 var group = app.MapGroup("/orders").WithTags("Orders");
 
 group.MapGet("/{id}", (string id) =>
-        orders.TryGetValue(id, out var order) ? Results.Ok(order) : Results.NotFound())
+        orders.TryGetValue(id, out var order) ? Results.Ok(order) : Results.Problem(statusCode: StatusCodes.Status404NotFound))
     .WithName("GetOrder")
     .WithSummary("Get an order")
     .Produces<Order>(StatusCodes.Status200OK)
@@ -65,8 +83,8 @@ group.MapPost("/", (NewOrder input) =>
 // New: delete an order. Shipped orders can't be deleted.
 group.MapDelete("/{id}", (string id) =>
 {
-    if (!orders.TryGetValue(id, out var order)) return Results.NotFound();
-    if (order.Status == "shipped") return Results.Conflict();
+    if (!orders.TryGetValue(id, out var order)) return Results.Problem(statusCode: StatusCodes.Status404NotFound);
+    if (order.Status == "shipped") return Results.Problem(statusCode: StatusCodes.Status409Conflict);
     orders.TryRemove(id, out _);
     return Results.NoContent();
 });

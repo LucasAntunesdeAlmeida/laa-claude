@@ -11,9 +11,9 @@ The goal: each endpoint has a contract people can read (the OpenAPI spec) and a 
 
 ## 1. Detect, once per task
 - **Spec**: `openapi.{yaml,yml,json}`, `swagger.*`, or `api/*.yaml`. Then find out which way it flows:
-  - **Generated from code**: swaggo (`swag init`), Swashbuckle or NSwag, ASP.NET Core's built-in `Microsoft.AspNetCore.OpenApi` (`AddOpenApi()` + `MapOpenApi()` serve it at runtime; with `Microsoft.Extensions.ApiDescription.Server` the build also writes it to disk, by default to the app's output directory, or to `<OpenApiDocumentsDirectory>`), FastAPI, NestJS `@nestjs/swagger`, springdoc, a `generate`/`openapi` script. A generated spec is never hand-edited: change the code, attributes, annotations, or transformers and regenerate with the repo's command (`dotnet build` for build-time generation). To add prose a generator can't express, apply an OpenAPI Overlay after generation instead of editing the output.
-  - **swag writes Swagger 2.0**: no 3.x constructs (`webhooks`, `type: [string, "null"]`, `const`) in its output or in advice about it.
-  - **Spec-first (code generated from the spec)**: oapi-codegen through `//go:generate go tool oapi-codegen -config cfg.yaml ../../api.yaml` (or `go run …/oapi-codegen`), openapi-generator, NSwag or openapi-typescript clients. The spec is the source: edit the spec, rerun the generator (`go generate ./...`), and commit the regenerated code in the same change. Never hand-edit generated files (`*.gen.go`, or any file headed `Code generated … DO NOT EDIT.`).
+  - **Generated from code**: swaggo (`swag init`), Swashbuckle or NSwag, ASP.NET Core's built-in `Microsoft.AspNetCore.OpenApi` (`AddOpenApi()` + `MapOpenApi()` serve it at runtime; with `Microsoft.Extensions.ApiDescription.Server`, referenced in the csproj or `Directory.Build.props`, the build also writes it to disk, by default to the app's output directory, or to `<OpenApiDocumentsDirectory>`), FastAPI, NestJS `@nestjs/swagger`, springdoc, a `generate`/`openapi` script. A generated spec is never hand-edited: change the code, attributes, annotations, or transformers and regenerate with the repo's command (`dotnet build` for build-time generation). To add prose a generator can't express, apply an OpenAPI Overlay after generation instead of editing the output.
+  - **swag v1 writes Swagger 2.0**: no 3.1-only constructs (`webhooks`, `type: [string, "null"]`, `const`) in its output or in advice about it. swag v2 (`github.com/swaggo/swag/v2`, still a release candidate) writes 3.1 with `--v3.1`, so check the import path and flags first.
+  - **Spec-first (code generated from the spec)**: oapi-codegen through `//go:generate go tool oapi-codegen -config cfg.yaml ../../api.yaml` (or `go run …/oapi-codegen`), openapi-generator, NSwag or openapi-typescript clients. The spec is the source: edit the spec, rerun the generator (`go generate ./...`, or the generator itself, such as `go tool oapi-codegen -config <cfg> <spec>`, when there's no `go:generate` directive), and commit the regenerated code in the same change. Never hand-edit generated files (`*.gen.go`, or any file headed `Code generated … DO NOT EDIT.`).
 - **Tooling**: the repo's spec linter (`redocly.yaml`, `.spectral.yaml`, a `lint` script) and whether `oasdiff` is installed or in CI.
 - **Collection**: a folder with `opencollection.yml` (YAML format) or `bruno.json` (`.bru` format). Its root is where `bru` commands run.
 - **Neither exists**: propose `api/openapi.yaml` + `api/bruno/` and ask first, since this sets a team-wide rule. To start a collection from an existing spec: `bru import openapi --source api/openapi.yaml --output api/bruno --collection-name "<Service> API"`. Check where the files landed, then tidy the result into the layout below.
@@ -29,13 +29,13 @@ Every endpoint change updates the spec in the same change:
 - deprecation: `deprecated: true` on the operation, parameter, or schema property, plus the `Deprecation` (RFC 9745) and `Sunset` (RFC 8594) response headers when the handler sends them;
 - `summary` and `description` written for a client developer.
 
-A new hand-written spec uses `openapi: 3.1.x`. Use 3.2 only when every tool in the chain (generator, codegen, linter, oasdiff, docs renderer, `bru import`) supports it.
+A new hand-written spec uses `openapi: 3.1.x`. Use 3.2 only when every tool in the chain (generator, codegen, linter, oasdiff, docs renderer, `bru import`) supports it. Generators can default to 3.2 (ASP.NET Core from .NET 11). When a downstream tool lags, pin the version: `options.OpenApiVersion = OpenApiSpecVersion.OpenApi3_1` in `AddOpenApi(...)`, and `--openapi-version OpenApi3_1` in `<OpenApiGenerateDocumentsOptions>` for build-time output.
 
-A removed or renamed field, a new required field, or a changed status code breaks clients. Say so, and bring in `laa:api-designer` for the versioning decision.
+A removed or renamed field, a new required field, or a changed status code breaks clients. Say so, name the `oasdiff breaking` check below (run it, or propose its CI step), and bring in `laa:api-designer` for the versioning decision (deprecate first, or a new version).
 
 ### Check every spec change
 - **Lint** with the repo's linter (on the regenerated output for a generated spec). None yet: propose one, pinned, and ask first: `npx @redocly/cli@<version> lint api/openapi.yaml`, or `npx @stoplight/spectral-cli@<version> lint api/openapi.yaml` with a `.spectral.yaml` of `extends: ["spectral:oas"]`. Look up the current version on npm before pinning it.
-- **Breaking changes**: when `oasdiff` is available, run `oasdiff breaking --fail-on ERR origin/main:api/openapi.yaml api/openapi.yaml` from inside the repo (`<git-ref>:<path>` reads the base from git; add `--fetch` when the ref isn't local). Report each change it finds. Without it, compare the diff by hand and propose the CI step (ask first):
+- **Breaking changes**: when `oasdiff` is available, run `oasdiff breaking --fail-on ERR origin/main:api/openapi.yaml api/openapi.yaml` from inside the repo (`<git-ref>:<path>` reads the base from git; add `--fetch` when the ref isn't local). Report each change it finds. Without it, compare the diff by hand, and still show this CI step so the next break fails the PR (ask before adding it):
   ```yaml
   - uses: actions/checkout@v7
     with:
@@ -147,18 +147,18 @@ Run the collection on every PR against a freshly started service, and keep the r
 - uses: usebruno/bruno-cli-action@v1
   with:
     working-directory: api/bruno
-    command: run --env ci --reporter-html results.html   # no "bru" prefix; the action adds --reporter-junit
+    command: run --env ci --reporter-html results.html --reporter-skip-headers "Authorization"   # no "bru" prefix; the action adds --reporter-junit
     bru-version: "4.2.1"                                 # pin it; the default is latest
   env:
     API_TOKEN: ${{ secrets.API_TOKEN }}
-- uses: actions/upload-artifact@v7                     # v4 and older run on Node 20, which GitHub is retiring on runners
+- uses: actions/upload-artifact@v7                     # v5 and older run on Node 20, which GitHub is retiring on runners
   if: ${{ !cancelled() }}
   with:
     name: api-tests
     path: api/bruno/results.html
     retention-days: 7
 ```
-The report records request and response headers and bodies, so it can hold the secrets CI injected. Treat `results.html` as sensitive, and keep tokens out of it with `--reporter-skip-headers "Authorization"` and, for login flows, `--reporter-skip-request-body` (it applies to every request in the run).
+The report records request and response headers and bodies, so it can hold the secrets CI injected. Treat `results.html` as sensitive: `--reporter-skip-headers "Authorization"` keeps the token out (list any other secret header), and for login flows add `--reporter-skip-request-body` (it applies to every request in the run).
 On other CI systems: `npm i -g @usebruno/cli@<pinned version>`, then `bru run --env ci --reporter-junit results.xml` from the collection root. Pin the CLI version the same way as every other tool.
 
 ## 8. Docs people read

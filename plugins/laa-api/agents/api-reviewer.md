@@ -34,7 +34,7 @@ If the diff touches no endpoint, spec, generated code, or collection file, retur
 - **Hand-edited generated spec**: the diff edits a spec that a generator writes, including ASP.NET build-time output.
 - **Spec-first drift**: the diff hand-edits generated code (`*.gen.go`, `DO NOT EDIT` files) instead of changing the spec and regenerating, or changes the spec without the regenerated code (or the reverse).
 - **Leaks**: a real token, password, or API key in a request, environment file, `.env` sample, or CI config; a `.env` that isn't git-ignored; a CI step that passes a secret as a literal.
-- **CI**: the collection exists but CI doesn't run it; CI installs the Bruno CLI or action at `latest`; `actions/upload-artifact` below the current major (v4 and older run on Node 20); a report artifact uploaded with request headers and bodies (and so CI's secrets) without `--reporter-skip-headers` or `--reporter-skip-request-body`.
+- **CI**: the collection exists but CI doesn't run it; CI installs the Bruno CLI or action at `latest`; `actions/upload-artifact` below the current major (v5 and older run on Node 20); a report artifact uploaded with request headers and bodies (and so CI's secrets) without `--reporter-skip-headers` or `--reporter-skip-request-body`.
 
 If the repo has an HTTP API with no spec and no collection, and the diff adds or changes an endpoint, report one low finding that suggests adding them, with the paths from `laa-api:api-conventions`.
 

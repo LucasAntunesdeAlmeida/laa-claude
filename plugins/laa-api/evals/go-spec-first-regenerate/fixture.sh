@@ -1,6 +1,7 @@
 #!/bin/sh
-# Seeds a spec-first Go service: api/openapi.yaml is the source, and oapi-codegen (run through
-# go:generate) writes internal/api/api.gen.go from it. The handler implements the generated
+# Seeds a spec-first Go service: api/openapi.yaml is the source, and oapi-codegen (a go.mod tool,
+# configured by internal/api/cfg.yaml) writes internal/api/api.gen.go from it. There's no go:generate
+# directive or Makefile target to point the way. The handler implements the generated
 # StrictServerInterface. The user wants a new `note` field on Order; the old guidance had no notion of
 # spec-first codegen, so it invites a hand edit to api.gen.go next to the spec change.
 set -eu
@@ -12,7 +13,10 @@ module example.com/orders
 
 go 1.24
 
-require github.com/oapi-codegen/runtime v1.1.1
+require (
+	github.com/oapi-codegen/oapi-codegen/v2 v2.5.0
+	github.com/oapi-codegen/runtime v1.1.1
+)
 
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 MOD
@@ -55,12 +59,6 @@ generate:
   std-http-server: true
   strict-server: true
 YAML
-
-cat > internal/api/generate.go <<'GO'
-package api
-
-//go:generate go tool oapi-codegen -config cfg.yaml ../../api/openapi.yaml
-GO
 
 cat > internal/api/api.gen.go <<'GO'
 // Package api provides primitives to interact with the openapi HTTP API.
