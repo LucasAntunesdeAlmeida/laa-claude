@@ -38,15 +38,17 @@ Decide which size fits and put it in the mode line:
 
 ## 2. Reproduce first
 Delegate to the `laa:test-engineer` agent in **reproduce** mode: the smallest test that fails *because of the bug*. Confirm the failure matches the reported symptom.
+- Record the last known-good ref or version when it's known (a tag, a release, the last good deploy), and pass it to step 3.
+- For a regression with a failing repro command and a known-good ref, bisect first: in a throwaway worktree, `git bisect start <bad> <good>`, then `git bisect run <repro command>` (it must exit 0 when good, 1–127 but not 125 when bad), then `git bisect reset`. Hand the first bad commit to step 3.
 If it can't be reproduced, collect what's missing (logs, input data, environment, version) and ask the user targeted questions. Don't guess-fix an unreproduced bug unless the user explicitly accepts that.
 
 ## 3. Investigate (fan-out)
 Call the **Workflow** tool with `name: "laa:investigate"` and
-`args: { bug, repro: <failing test + output>, context: <relevant project-map excerpt>, thorough: <true for Hard> }`.
+`args: { bug, repro: <failing test + output>, context: <relevant project-map excerpt, last known-good ref, first bad commit if bisected>, thorough: <true for Hard> }`.
 Optionally narrow `angles` (defaults: recent-changes, data-flow, config-env, concurrency, data-state). Drop angles that clearly don't apply, such as concurrency for a pure function.
 
 ## 4. Decide
-Present the surviving root causes, ranked, each with its evidence and verification votes. If the top one is clearly confirmed, proceed. If the survivors conflict or all are uncertain, run the `howToConfirm` check yourself, or ★ ask which root cause to fix as a gate card (the causes are the options).
+Present the root causes the workflow returns in its three buckets (confirmed, unverified, refuted), each with its evidence and verification votes. Unverified ones (uncertain votes or verifier errors) are neither confirmed nor ruled out. If the top one is clearly confirmed, proceed. If the confirmed ones conflict, or none is confirmed, run the `howToConfirm` check yourself, or ★ ask which root cause to fix as a gate card (the causes are the options).
 
 ## 5. Fix
 - Apply the **minimal** fix at the root cause, not at the symptom. Follow the repo's conventions.

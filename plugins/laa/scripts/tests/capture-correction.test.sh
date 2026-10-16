@@ -49,6 +49,19 @@ expect quiet "notes for the release are in docs/"
 expect quiet "add a now() helper to the clock package"
 expect quiet "fix the 500 on GET /invoices"
 
+# Harness-injected turns (subagent hand-backs, background-task notifications) aren't the user, even when
+# the text they carry reads like a correction.
+expect quiet "<agent-message from=\\\"implementer\\\">no, that's wrong: the tests fail</agent-message>"
+expect quiet "[Subagent hand-back] you forgot the migration"
+expect quiet "<task-notification><status>failed</status> that's wrong</task-notification>"
+expect quiet "[SYSTEM NOTIFICATION] don't use the cache"
+# The same, with the angle bracket escaped the way some JSON encoders write it (backslash, u003c).
+esc=$(printf '\134u003c')
+expect quiet "${esc}agent-message>no, you forgot the tests"
+expect quiet "${esc}task-notification>that's wrong"
+# A real correction that only mentions the words is still flagged.
+expect flagged "no, the agent message was wrong"
+
 # Repos laa hasn't adopted are left alone, including one where only laa's local state was written.
 for dir in "$repo/elsewhere" "$repo/fresh"; do
   if printf '{"prompt":"that is wrong"}' | CLAUDE_PROJECT_DIR="$dir" sh "$hook" | grep -q .; then

@@ -90,6 +90,152 @@ test('review-panel says "1 finding" for a single finding', async () => {
   assert.match(result.report, /- `HIGH` `a.go:1` Nil map write → init the map/)
 })
 
+test('review-panel keeps an uncertain single vote out of the confirmed findings', async () => {
+  const { result } = await run('review-panel', { base: 'main' }, [
+    ['review:correctness', { findings: [{ severity: 'high', file: 'a.go', line: 1, title: 'Nil map write', scenario: 's', fix: 'init the map' }] }],
+    ['review:', { findings: [] }],
+    ['verify:', { verdict: 'uncertain', evidence: 'could not tell' }],
+  ])
+  assert.deepEqual(result.confirmed, [])
+  assert.equal(result.unverified.length, 1)
+  assert.equal(result.refutedCount, 0)
+  assert.equal(result.report, [
+    '**▲ No confirmed findings** · 1 unverified · 0 refuted · correctness, completeness, security, performance',
+    '',
+    "**▲ 1 unverified** · verifiers couldn't settle these; check them by hand",
+    '- `HIGH` `a.go:1` Nil map write → init the map · 1 uncertain',
+  ].join('\n'))
+})
+
+test('review-panel reports a finding whose verifiers errored as unverified, not refuted', async () => {
+  const { result } = await run('review-panel', { base: 'main', thorough: true }, [
+    ['review:security', { findings: [{ severity: 'critical', file: 'api/auth.go', line: 12, title: 'Tenant check missing', scenario: 's', fix: 'check the tenant id' }] }],
+    ['review:', { findings: [] }],
+    ['verify:auth.go:12#1', { verdict: 'confirmed', evidence: 'e' }],
+    // #2 and #3 match nothing, so the fake agent returns null, as a failed verifier does.
+  ])
+  assert.deepEqual(result.confirmed, [])
+  assert.equal(result.refutedCount, 0)
+  assert.equal(result.unverified.length, 1)
+  assert.equal(result.unverified[0].errored, 2)
+  assert.match(result.report, /^\*\*▲ No confirmed findings\*\* · 1 unverified · 0 refuted/)
+  assert.match(result.report, /- `CRIT` `api\/auth\.go:12` Tenant check missing → check the tenant id · 2 verifier errors$/)
+})
+
+test('review-panel confirms with a majority of thorough votes and refutes with a majority against', async () => {
+  const { result } = await run('review-panel', { base: 'main', thorough: true }, [
+    ['review:correctness', {
+      findings: [
+        { severity: 'high', file: 'a.go', line: 1, title: 'Nil map write', scenario: 's', fix: 'init the map' },
+        { severity: 'low', file: 'b.go', line: 50, title: 'Wrong log level', scenario: 's', fix: 'use warn' },
+      ],
+    }],
+    ['review:', { findings: [] }],
+    ['verify:a.go:1#3', { verdict: 'uncertain', evidence: 'e' }],
+    ['verify:a.go:1', { verdict: 'confirmed', evidence: 'e' }],
+    ['verify:b.go:50#1', { verdict: 'confirmed', evidence: 'e' }],
+    ['verify:b.go:50', { verdict: 'refuted', evidence: 'e' }],
+  ])
+  assert.deepEqual(result.confirmed.map(f => f.file), ['a.go'])
+  assert.equal(result.refutedCount, 1)
+  assert.deepEqual(result.unverified, [])
+})
+
+test('review-panel keeps distinct findings from different dimensions at nearby lines', async () => {
+  const findings = {
+    correctness: [{ severity: 'medium', file: 'api/auth.go', line: 13, title: 'Nil user on expired session', scenario: 's', fix: 'return 401 first' }],
+    security: [{ severity: 'critical', file: 'api/auth.go', line: 12, title: 'Tenant check missing', scenario: 's', fix: 'check the tenant id' }],
+  }
+  const { result } = await run('review-panel', { base: 'main' }, [
+    ['review:', (_, opts) => ({ findings: findings[opts.label.slice('review:'.length)] || [] })],
+    ['verify:', { verdict: 'confirmed', evidence: 'e' }],
+  ])
+  assert.equal(result.report, [
+    '**2 findings** · 0 refuted · correctness, completeness, security, performance',
+    '- `CRIT` `api/auth.go:12` Tenant check missing → check the tenant id',
+    '- `MED` `api/auth.go:13` Nil user on expired session → return 401 first',
+  ].join('\n'))
+})
+
+test('review-panel merges the same issue from two dimensions and keeps the most severe copy', async () => {
+  const same = { file: 'svc/order.go', line: 40, title: 'Order total ignores discounts', scenario: 's', fix: 'apply discounts' }
+  const findings = {
+    correctness: [{ ...same, severity: 'medium' }],
+    completeness: [{ ...same, severity: 'high' }],
+  }
+  const { result } = await run('review-panel', { base: 'main' }, [
+    ['review:', (_, opts) => ({ findings: findings[opts.label.slice('review:'.length)] || [] })],
+    ['verify:', { verdict: 'confirmed', evidence: 'e' }],
+  ])
+  assert.equal(result.confirmed.length, 1)
+  assert.equal(result.confirmed[0].severity, 'high')
+  assert.deepEqual(result.confirmed[0].dimensions, ['completeness', 'correctness'])
+})
+
+test('review-panel tells reviewers to skip pre-existing and style-only issues, never real defects', async () => {
+  const { calls } = await run('review-panel', { base: 'main' }, [['review:', { findings: [] }]])
+  const completeness = calls.find(c => c.opts.label === 'review:completeness')
+  assert.match(completeness.prompt, /pre-existing/)
+  assert.match(completeness.prompt, /style and formatting/)
+  assert.match(completeness.prompt, /CI already enforces/)
+  assert.match(completeness.prompt, /ever covers a correctness, security, or performance defect/)
+  assert.doesNotMatch(completeness.prompt, /anything a linter/)
+  assert.match(completeness.prompt, /CLAUDE\.md/)
+})
+
+test('review-panel merges a confirmed and an unverified copy of the same issue as confirmed', async () => {
+  const findings = {
+    correctness: [{ severity: 'medium', file: 'svc/order.go', line: 40, title: 'Order total ignores discounts', scenario: 's', fix: 'apply discounts' }],
+    completeness: [{ severity: 'high', file: 'svc/order.go', line: 41, title: 'Order total ignores discounts.', scenario: 's', fix: 'apply discounts' }],
+  }
+  const { result } = await run('review-panel', { base: 'main' }, [
+    ['review:', (_, opts) => ({ findings: findings[opts.label.slice('review:'.length)] || [] })],
+    ['verify:order.go:40', { verdict: 'confirmed', evidence: 'e' }],
+    ['verify:order.go:41', { verdict: 'uncertain', evidence: 'e' }],
+  ])
+  assert.deepEqual(result.unverified, [])
+  assert.equal(result.confirmed.length, 1)
+  assert.equal(result.confirmed[0].status, 'confirmed')
+  assert.equal(result.confirmed[0].severity, 'high')
+  assert.deepEqual(result.confirmed[0].dimensions, ['correctness', 'completeness'])
+  assert.match(result.report, /^\*\*1 finding\*\* · 0 refuted/)
+})
+
+test('review-panel keeps same-titled findings apart when their lines are far apart', async () => {
+  const same = { severity: 'medium', file: 'svc/order.go', title: 'Unchecked error', scenario: 's', fix: 'return it' }
+  const findings = { correctness: [{ ...same, line: 10 }], completeness: [{ ...same, line: 30 }] }
+  const { result } = await run('review-panel', { base: 'main' }, [
+    ['review:', (_, opts) => ({ findings: findings[opts.label.slice('review:'.length)] || [] })],
+    ['verify:', { verdict: 'confirmed', evidence: 'e' }],
+  ])
+  assert.equal(result.confirmed.length, 2)
+})
+
+test('investigate reports a root cause whose verifiers errored as unverified, not refuted', async () => {
+  const { result } = await run('investigate', { bug: 'b', angles: ['data-flow'] }, [
+    ['investigate:', { hypotheses: [{ rootCause: 'x', location: 'a.go:1', mechanism: 'm', howToConfirm: 'h', confidence: 'high' }] }],
+    ['cluster', { clusters: [{ rootCause: 'Stale cache', location: 'cache/order.go:8', mechanism: 'm', howToConfirm: 'disable the cache', supportingAngles: ['data-flow'] }] }],
+    // No verify: output, so both verifiers return null.
+  ])
+  assert.equal(result.hypotheses[0].status, 'unverified')
+  assert.equal(result.hypotheses[0].errored, 2)
+  assert.equal(result.report, [
+    '**0 of 1 root causes confirmed** · 1 unverified · 0 refuted · 1 angles',
+    '- ▲ `cache/order.go:8` Stale cache · unverified: 0 confirmed, 0 refuted, 2 verifier errors → disable the cache',
+  ].join('\n'))
+})
+
+test('investigate keeps uncertain verdicts out of the confirmed bucket', async () => {
+  const { result } = await run('investigate', { bug: 'b', angles: ['data-flow'] }, [
+    ['investigate:', { hypotheses: [{ rootCause: 'x', location: 'a.go:1', mechanism: 'm', howToConfirm: 'h', confidence: 'high' }] }],
+    ['cluster', { clusters: [{ rootCause: 'Stale cache', location: 'cache/order.go:8', mechanism: 'm', howToConfirm: 'disable the cache', supportingAngles: ['data-flow'] }] }],
+    ['verify:', { verdict: 'uncertain', evidence: 'e' }],
+  ])
+  assert.equal(result.hypotheses[0].status, 'unverified')
+  assert.equal(result.hypotheses[0].survives, false)
+  assert.match(result.report, /unverified: 0 confirmed, 0 refuted, 2 uncertain/)
+})
+
 test('investigate marks surviving root causes with ✓ and refuted ones with ✗', async () => {
   const { result } = await run('investigate', { bug: 'orders double-charge on retry', angles: ['recent-changes', 'concurrency'] }, [
     ['investigate:', { hypotheses: [{ rootCause: 'x', location: 'a.go:1', mechanism: 'm', howToConfirm: 'h', confidence: 'high' }] }],
@@ -104,7 +250,7 @@ test('investigate marks surviving root causes with ✓ and refuted ones with ✗
   ])
   assert.equal(result.hypotheses.length, 2)
   assert.equal(result.report, [
-    '**1 of 2 root causes survived verification** · 2 angles',
+    '**1 of 2 root causes confirmed** · 0 unverified · 1 refuted · 2 angles',
     '- ✓ `pay/retry.go:31` Retry reuses the idempotency key of a failed charge · 2 confirmed, 0 refuted → replay a failed charge twice',
     '- ✗ `cache/order.go:8` Cache returns a stale order · refuted',
   ].join('\n'))
@@ -136,6 +282,20 @@ test('design-panel names the winner, the ranking, and the deep-dives that return
     '- 2. simplicity · 30.0',
     '- Deep-dives: data model, API, infra',
   ].join('\n'))
+})
+
+test('design-panel rotates the proposal order per judge and keeps proposal numbers stable', async () => {
+  const score = proposal => ({ proposal, fit: 5, simplicity: 5, risk: 5, cost: 5, evolvability: 5, bestIdeas: [], fatalFlaws: [] })
+  const { calls } = await run('design-panel', { requirements: 'a booking service', lenses: ['simplicity', 'scale', 'cost'] }, [
+    ['architect:', (_, opts) => `proposal ${opts.label}`],
+    ['judge:', { scores: [score(1), score(2), score(3)] }],
+    ['synthesize', 'final blueprint'],
+  ])
+  const order = label => [...calls.find(c => c.opts.label === label).prompt.matchAll(/=== PROPOSAL (\d) \(lens: (\w+)\)/g)]
+    .map(m => `${m[1]}:${m[2]}`)
+  assert.deepEqual(order('judge:1'), ['1:simplicity', '2:scale', '3:cost'])
+  assert.deepEqual(order('judge:2'), ['2:scale', '3:cost', '1:simplicity'])
+  assert.deepEqual(order('synthesize'), ['1:simplicity', '2:scale', '3:cost'])
 })
 
 test('implement-slices marks a blocked slice with ▲', async () => {

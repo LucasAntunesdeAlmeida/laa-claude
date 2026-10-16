@@ -95,7 +95,7 @@ Every pipeline sizes itself to the task. Trivial bugs and small features skip th
             │
             └──► meta layer
                    adopt  → .claude/laa/project-map.md + repo-local agents/skills/workflows/hooks (via forge)
-                   retro  → .claude/laa/learnings.md
+                   retro  → .claude/laa/learnings.md (on a work branch, never the default branch)
                    evolve → local diffs  |  upstream PR to this repo + eval case
 ```
 
@@ -105,7 +105,7 @@ Per-project state lives in `<project>/.claude/laa/`:
 - `assets.md`: an inventory of generated assets and why each one exists
 - `local/`: state that is never committed (it ignores itself): `runs/<branch>.md`, the journal `/laa:resume` reads, and `last-review.md`, the findings the `/laa-findings` pane lists
 
-Several agents (`explorer`, `reviewer`, `investigator`, `security-reviewer`) also keep persistent **project memory** across sessions.
+Several agents (`explorer`, `reviewer`, `investigator`, `security-reviewer`) also keep persistent **local memory** across sessions, in `<project>/.claude/agent-memory-local/laa-<agent>/` (Claude Code prefixes a plugin agent's memory directory with the plugin name). It's per developer and never committed (the agents drop a `.gitignore` there on first write, and `/laa:adopt` adds the path to `.gitignore`), so parallel agents never write tracked files, on the default branch or anywhere else. `/laa:evolve` reads it for repeated patterns.
 
 ## Code intelligence (graphify)
 

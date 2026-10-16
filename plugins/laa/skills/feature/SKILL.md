@@ -44,7 +44,7 @@ Using **AskUserQuestion**, ask only what the code and request can't answer: beha
 Call the **Workflow** tool with `name: "laa:design-panel"` and
 `args: { requirements: <feature + answers + acceptance criteria>, context: <project-map excerpt + explorer findings> }`.
 For a feature inside an existing system, pass lenses that fit, for example `["minimal change following existing patterns", "cleanest long-term design", "safest rollout (flags, backward compat)"]`.
-Present the blueprint, the ranking, and the deep-dives (data model, API, threat model, scale risks, infra) concisely. Record significant decisions as ADRs in `docs/adr/` (or the repo's existing ADR location).
+Present the blueprint, the ranking, and the deep-dives (data model, API, threat model, scale risks, infra) concisely. Record significant decisions as ADRs in `docs/adr/` (or the repo's existing ADR location, following its format). A new ADR uses the MADR shape: a `status` (Proposed, Accepted, Deprecated, or Superseded by ADR-NNNN), the date, context, options, decision, and consequences. It starts as Proposed and becomes Accepted when the plan gate approves. When it replaces an earlier ADR, link to it, and set the old one to `Superseded by ADR-NNNN` with a link back.
 
 ## 5. Plan slices
 Turn the blueprint's build sequence into work items: `{ id, title, spec, files, acceptance }`.
