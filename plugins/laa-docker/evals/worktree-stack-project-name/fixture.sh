@@ -1,6 +1,8 @@
 #!/bin/sh
-# Seeds a small service whose Postgres runs through compose with a variable host port, a Makefile
-# integration target, and a .gitignore that ignores .env. The workspace stands in for a worktree of
+# Seeds a small service whose Postgres runs through compose with a variable host port, a .gitignore
+# that ignores .env, and Makefile targets (test-integration, logs, down) that call `docker compose`
+# with no project name, so running them from a worktree hits the main checkout's stack unless the
+# project name is in .env or on the same command line. The workspace stands in for a worktree of
 # the branch feat/Order-Export; the slash and capitals make a raw branch slug an invalid project name.
 set -eu
 
@@ -60,13 +62,16 @@ func Open(ctx context.Context, url string) (*pgxpool.Pool, error) {
 GO
 
 cat > Makefile <<'MK'
-.PHONY: up test-integration down
+.PHONY: up test-integration logs down
 
 up:
 	docker compose up -d --wait db
 
-test-integration:
+test-integration: up
 	go test -tags integration ./...
+
+logs:
+	docker compose logs -f db
 
 down:
 	docker compose down
