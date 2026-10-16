@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: soft-delete-keeps-tenant-filter
+context:
+  scaffold_script: fixture.sh
