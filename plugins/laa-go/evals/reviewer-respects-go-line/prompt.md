@@ -1,6 +1,6 @@
 ---
 name: reviewer-respects-go-line
-description: On a go 1.24 module the Go reviewer doesn't ask for `x := x` loop-variable copies or for stopping timers / avoiding time.After in a loop (not bugs since Go 1.22/1.23), but does flag `wg.Add(1)` called inside the goroutine.
+description: Regression guard rather than a before/after discriminator. The reviewer model already knows these go-line rules and bug classes without the updated checklist, so the pre-change reviewer passes too. On a go 1.24 module the Go reviewer doesn't ask for `x := x` loop-variable copies or for stopping timers / avoiding time.After in a loop (not bugs since Go 1.22/1.23), but flags `wg.Add(1)` inside the goroutine, errgroup goroutines using the outer ctx instead of the group ctx, a `fmt.Sprintf("%s:%d")` dial address that breaks on IPv6, and a path traversal whose fix is `os.OpenRoot` or `filepath.IsLocal` rather than a Clean/HasPrefix check.
 tags: [go, review, go-line]
 runs: 3
 max_turns: 10

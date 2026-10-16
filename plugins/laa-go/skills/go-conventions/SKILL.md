@@ -11,7 +11,7 @@ description: Idiomatic Go backend conventions (project layout, errors, context, 
 - Read the `go` line in `go.mod` before writing code. It sets the language semantics and the GODEBUG defaults, not just a minimum toolchain. Use an API or language feature only when the go line is at or above the release that added it (table below).
 - Behavior that flips with the go line:
   - **1.22**: each loop iteration gets its own loop variable, and `ServeMux` understands method and wildcard patterns (`"GET /invoices/{id}"`). Below go 1.22 those patterns are matched literally and don't route as intended.
-  - **1.23**: unreferenced `Timer`/`Ticker` values are garbage-collected even when not stopped, and timer channels are unbuffered.
+  - **1.23**: unreferenced `Timer`/`Ticker` values are garbage-collected even when not stopped, and timer channels are unbuffered. Go 1.27 removed the `asynctimerchan` GODEBUG, so with a 1.27+ toolchain this applies whatever the go line says.
 - For a new module, target a supported release (the two most recent majors; check `https://go.dev/VERSION?m=text`). Raise the go line deliberately with `go get go@1.N`, and treat it as a behavior change: re-run the tests.
 - Keep `toolchain` separate: it only picks the toolchain to build with, it doesn't change semantics. Don't raise the go line just because the local toolchain is newer.
 - Override a single GODEBUG with a `godebug` block in go.mod only with a comment saying why.
@@ -49,9 +49,9 @@ description: Idiomatic Go backend conventions (project layout, errors, context, 
 
 ## HTTP
 - Use the stdlib `net/http` with method/wildcard patterns (`mux.HandleFunc("GET /invoices/{id}", h)`, go >= 1.22) unless the repo already uses chi, echo, or gin.
-- Never use `http.ListenAndServe` directly. Build an `http.Server` with `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout`, and `IdleTimeout` set, and shut it down with `srv.Shutdown(ctx)`.
+- Never use `http.ListenAndServe` directly. Build an `http.Server` with `ReadHeaderTimeout`, `ReadTimeout`, and `IdleTimeout` set, plus `WriteTimeout` unless it serves streams (SSE, long downloads). Streaming handlers set their own deadline with `http.NewResponseController(w).SetWriteDeadline(...)`. Shut it down with `srv.Shutdown(ctx)`.
 - Decode with `json.NewDecoder(r.Body)` and `DisallowUnknownFields()` for strict APIs. Limit the body size with `http.MaxBytesReader`.
-- `encoding/json/v2` is in the standard library from Go 1.27 (stricter defaults: rejects invalid UTF-8 and duplicate names). Use it only on go >= 1.27 and when the repo hasn't settled on v1; on older lines it exists only behind `GOEXPERIMENT=jsonv2`, so don't use it.
+- `encoding/json/v2` is in the standard library from Go 1.27 (stricter defaults: rejects invalid UTF-8 and duplicate names). Use it only on go >= 1.27 and when the repo hasn't settled on v1. On go lines below 1.27, don't use it (the `stdversion` check in `go vet`/`go test` flags it). From 1.27, v1 `encoding/json` runs on the v2 implementation, so don't assert on its exact error text.
 - Cookie-authenticated APIs need CSRF protection: wrap the mux with `http.NewCrossOriginProtection().Handler(mux)` on go >= 1.25.
 - Middleware handles request IDs, structured logging (`log/slog`), panic recovery, auth, and tenant resolution.
 - Build dial addresses with `net.JoinHostPort(host, port)`, never `fmt.Sprintf("%s:%d", ...)` (breaks on IPv6).
@@ -77,8 +77,9 @@ description: Idiomatic Go backend conventions (project layout, errors, context, 
 - Use `httptest.NewServer` or `httptest.NewRecorder` for handlers.
 
 ## Tooling
-- Track dev tools in go.mod with `go get -tool <pkg>@<version>` and run them with `go tool <name>` (go >= 1.24). Don't add a `tools.go` with blank imports on those modules; migrate an existing one when touching it.
-  - `go get -tool golang.org/x/vuln/cmd/govulncheck@latest` then `go tool govulncheck ./...`.
+- Track dev tools in go.mod with `go get -tool <pkg>@<version>` and run them with `go tool <name>` (go >= 1.24). Don't add a `tools.go` with blank imports on those modules; when one exists, propose migrating it.
+  - `-tool` dependencies join the module graph: `go get` raises the module's go line to the highest one among the tool's dependencies. Pin a tool version whose go.mod is at or below the module's go line (check `https://proxy.golang.org/<module>/@v/<version>.mod`), and check the `go` line in go.mod after `go get`.
+  - Tools whose latest release needs a newer go line (for example govulncheck: recent `golang.org/x/vuln` releases need go 1.25+) can run outside the module: `go run golang.org/x/vuln/cmd/govulncheck@latest ./...`.
 - golangci-lint v2 config (`.golangci.yml`):
   ```yaml
   version: "2"

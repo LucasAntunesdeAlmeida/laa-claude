@@ -16,7 +16,7 @@ Read the `go` directive in the nearest `go.mod` (or `go.work`). It decides both 
 
 ## Not findings (don't report these)
 - go >= 1.22: missing `x := x` / `v := v` copies before closures or goroutines in loops. Loop variables are per-iteration; if the diff adds such copies, at most note they're removable.
-- go >= 1.23: a `time.Timer` or `time.Ticker` that isn't stopped, or `time.After` inside a loop/`select`. They're collected once unreferenced; this is not a leak. (Still report a `Ticker` whose goroutine never exits; that's a goroutine leak.)
+- go >= 1.23: a `time.Timer` or `time.Ticker` that isn't stopped, or `time.After` inside a loop/`select`. They're collected once unreferenced; this is not a leak. With a Go 1.27+ toolchain this holds whatever the go line says (the `asynctimerchan` GODEBUG was removed). (Still report a `Ticker` whose goroutine never exits; that's a goroutine leak.)
 - Plain `if err != nil` blocks. Don't suggest `try`/`must`-style helpers to shorten them.
 
 ## Check
@@ -30,7 +30,7 @@ Read the `go` directive in the nearest `go.mod` (or `go.work`). It decides both 
 - **Races**: maps or slices shared across goroutines without sync. Closures capturing loop variables are a race only on go < 1.22.
 - **Resources**: `defer rows.Close()` / `resp.Body.Close()` after the error check, no `defer` inside long loops, and `sql.Rows.Err()` checked after iteration.
 - **Slices and maps**: `append` aliasing a shared backing array, and writes to a nil map.
-- **HTTP**: `http.ListenAndServe` or an `http.Server` without `ReadHeaderTimeout`/`ReadTimeout`/`WriteTimeout`/`IdleTimeout`, missing body size limits, client without a timeout, and a response written after `http.Error`. Method/wildcard mux patterns (`"GET /x/{id}"`) on go < 1.22 don't route as intended.
+- **HTTP**: `http.ListenAndServe` or an `http.Server` without `ReadHeaderTimeout`/`ReadTimeout`/`IdleTimeout`, or without `WriteTimeout` when it doesn't stream (SSE and long downloads legitimately leave it unset and set per-handler deadlines with `http.NewResponseController(w).SetWriteDeadline`), missing body size limits, client without a timeout, and a response written after `http.Error`. Method/wildcard mux patterns (`"GET /x/{id}"`) on go < 1.22 don't route as intended.
 - **Paths**: user-controlled file names joined onto a base dir (`filepath.Join(base, name)` then `os.Open`) allow `../` traversal. Fix: `os.OpenRoot(base)` and open through the root (go >= 1.24), or validate with `filepath.IsLocal`.
 - **Addresses**: `fmt.Sprintf("%s:%d", host, port)` (or `host + ":" + port`) for dial/listen addresses breaks on IPv6. Fix: `net.JoinHostPort`.
 - **API design**: exported identifiers without a need, interfaces defined at the producer, `interface{}`/`any` where generics or concrete types fit.
