@@ -37,8 +37,10 @@ You review JavaScript and TypeScript backend changes for problems that generic r
   - A `.eslintrc.*` on ESLint 10, which ignores it.
 - **Upgrade traps** (when `package.json` bumps the major):
   - Express 5:
-    - Unnamed wildcards (`'/*'`, `'*'`) throw when the route is registered. Use `'/*splat'`, or `'/{*splat}'` to also match `/`.
-    - `?` optional params (`'/:file.:ext?'`) and regex characters in string paths are gone. Use braces (`'/:file{.:ext}'`).
+    - Route strings that path-to-regexp 8 can't parse throw when the route is registered, so the app fails at startup:
+      - Unnamed wildcards (`'/*'`, `'*'`). Use `'/*splat'`, or `'/{*splat}'` to also match `/`.
+      - `?` optional params (`'/:file.:ext?'` throws "Unexpected ?"). Use braces (`'/:file{.:ext}'`).
+      - `+`, and regex characters such as `(`, `)`, `[`, `]`. Use a wildcard, or escape them to match literally.
     - Assigning `req.query` (or its keys) no longer works: it's a getter, and the default query parser is now "simple".
     - `req.body` is `undefined`, not `{}`, when no body parser ran.
     - `res.send(status)`, `res.send(body, status)`, `res.json(obj, status)`, and `res.redirect(url, status)` are removed. Use `res.sendStatus()`, `res.status().send()`, and `res.redirect(status, url)`.
@@ -48,7 +50,7 @@ You review JavaScript and TypeScript backend changes for problems that generic r
     - Querystring, params, body, and response schemas must be full JSON Schema, including `type`.
     - `req.params` has a null prototype, so `req.params.hasOwnProperty(...)` throws. Use `Object.hasOwn`.
     - A custom logger instance goes in `loggerInstance`. `logger` only takes options.
-    - `reply.redirect(url, code)`: the argument order flipped.
+    - `reply.redirect(code, url)`, the v4 order. Fastify 5 is `reply.redirect(url, code?)`, the reverse of Express 5's `res.redirect(status, url)`.
     - `request.connection` is removed.
     - A plugin can't mix the callback and promise APIs.
   - Prisma 7:
@@ -78,7 +80,7 @@ You review JavaScript and TypeScript backend changes for problems that generic r
   - New dependencies with install scripts (`preinstall`, `install`, `postinstall`), or a new entry in pnpm `allowBuilds`
   - Dependencies from git or tarball URLs instead of the registry
   - Lockfile changes that don't match a `package.json` change (new or changed packages nobody asked for)
-  - Release-age delays (`minimumReleaseAge`, `min-release-age`) or script blocking turned off
+  - Release-age delays (`minimumReleaseAge`, `min-release-age`), script blocking, or `blockExoticSubdeps` turned off (`blockExoticSubdeps: false`)
 
 If the toolchain is available, run `tsc --noEmit`, the linter, and the relevant tests. Include the relevant output.
 

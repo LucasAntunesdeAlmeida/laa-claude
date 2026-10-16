@@ -2,6 +2,7 @@
 # Seeds a Node service whose new env schema (Zod 4) parses boolean flags with z.coerce.boolean().
 # That is Boolean(value), so REQUIRE_AUTH=false and DEBUG_SQL=false both parse as true: auth is
 # still on where the admin deployment turned it off, and SQL debug logging is on everywhere.
+# The new schema also uses forms Zod 4 deprecates: z.string().url() / .email() and the `message` param.
 set -eu
 
 mkdir -p src/config
@@ -35,8 +36,8 @@ import * as z from 'zod';
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(8080),
-  DATABASE_URL: z.url(),
-  SUPPORT_EMAIL: z.email(),
+  DATABASE_URL: z.string().url(),
+  SUPPORT_EMAIL: z.string().email({ message: 'SUPPORT_EMAIL must be an email address' }),
   REQUIRE_AUTH: z.coerce.boolean().default(true),
   DEBUG_SQL: z.coerce.boolean().default(false),
 });

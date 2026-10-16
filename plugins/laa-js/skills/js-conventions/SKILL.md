@@ -21,8 +21,10 @@ description: Modern Node.js backend conventions for TypeScript and JavaScript (p
 - TypeScript 6 deprecates `moduleResolution: "node"` / `"node10"` and `baseUrl`, and TypeScript 7 rejects them. Use `nodenext` (or `bundler` behind a bundler) and drop `baseUrl`.
 - When Node runs `.ts` files directly (type stripping is stable since Node v24.12.0 / v25.2.0):
   - Add `"erasableSyntaxOnly": true`. No `enum`, runtime `namespace`, constructor parameter properties, or `import x = require()`. Use `as const` objects instead of enums.
-  - Import relative files with the `.ts` extension, plus `"rewriteRelativeImportExtensions": true` if `tsc` also emits JS.
-  - Node ignores tsconfig `paths`. Use package.json `imports` instead (`"#/*": "./src/*"`, imported as `#/db.ts`; Node allows the `#/` prefix since v24.14.0 / v25.4.0, otherwise use `#src/*`).
+  - Import relative files with `.ts` and set `"rewriteRelativeImportExtensions": true` (or `"allowImportingTsExtensions": true` with `noEmit`). Without either, `tsc` rejects `.ts` specifiers (TS5097), with or without emit.
+  - Node ignores tsconfig `paths`. Use package.json `imports` instead (Node allows the `#/` prefix since v24.14.0 / v25.4.0, otherwise use `#src/*`).
+    - With `"#/*": "./src/*"`, imported as `#/db.ts`: `tsc` doesn't rewrite non-relative specifiers, so this type-checks only with `allowImportingTsExtensions` plus `noEmit` (TS2877 otherwise). Use it only when `tsc` never emits.
+    - If `tsc` emits, map by condition and import without an extension: `"#/*": { "development": "./src/*.ts", "default": "./dist/*.js" }`, imported as `#/db`, and run dev with `node --conditions=development`.
 - TypeScript 7 (the native compiler) ships no programmatic API, and typescript-eslint needs one. Keep `typescript` on 6.x for linting (the `@typescript/typescript6` alias) and run TypeScript 7's `tsc` for type checks.
 - TypeScript 7 drops parts of JSDoc support in `// @ts-check` JS repos: `@enum` and Closure-style `function(string): void` types no longer work. Use `@typedef` and arrow-type syntax.
 
@@ -95,7 +97,7 @@ description: Modern Node.js backend conventions for TypeScript and JavaScript (p
 - pnpm (`pnpm-workspace.yaml`):
   - Dependency build scripts are off by default. Approve only the packages that need them in `allowBuilds` (`esbuild: true`). pnpm 11 replaced `onlyBuiltDependencies`.
   - Keep a release-age delay with `minimumReleaseAge` (minutes; the current default is 1440).
-  - Set `blockExoticSubdeps: true` so transitive deps can't come from git or tarball URLs.
+  - Keep `blockExoticSubdeps` on (the default), so transitive deps can't come from git or tarball URLs.
 - npm (`.npmrc`): set `min-release-age` (days). Consider `ignore-scripts=true`, or, on npm versions that support it, an `allowScripts` allowlist in `package.json`.
 - Review new dependencies that run install scripts or come from git or tarball URLs. A lockfile change should match a `package.json` change.
 
