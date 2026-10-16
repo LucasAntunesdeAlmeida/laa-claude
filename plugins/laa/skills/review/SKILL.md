@@ -53,7 +53,7 @@ Call the **Workflow** tool with `name: "laa:review-panel"` and
 `args: { base, target, workdir, requirements, extraReviewers, thorough: <true if --thorough or the diff touches auth/payments/migrations> }`.
 
 ## 4. Report
-Show the confirmed findings in the findings format of the output contract, most severe first, with how many were refuted. Show unverified findings (uncertain votes or verifier errors) in their own `▲` list after them: never drop them and never count them as refuted. If nothing was confirmed, say so in a `**✓ No findings**` status line.
+Show the confirmed findings in the findings format of the output contract, most severe first, with how many were refuted. Show unverified findings (uncertain votes or verifier errors) in their own `▲` list after them: never drop them and never count them as refuted. If nothing was confirmed, say so in a status line: `**▲ No confirmed findings**` when some are unverified, `**✓ No findings**` only when none are.
 
 Then, in a repo laa has adopted, save them for the `/laa-findings` pane and later fixes: overwrite `.claude/laa/local/last-review.md` (see the output contract's local state; it's fine on the default branch) with
 ```
