@@ -508,7 +508,7 @@ export const register: Register = (on, options) => {
 
   // A commit through Bash (Git Bash on Windows) or the PowerShell tool.
   on('tool.call', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
-    const dirs = commitDirs(e.command)
+    const dirs = commitDirs(e.command, e.tool === 'Bash')
     if (dirs.length > 0) {
       const cwd = await $.session.cwd()
       // Every commit in the command, and every directory one could run in: refused if any is guarded.
