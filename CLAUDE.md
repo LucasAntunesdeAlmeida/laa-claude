@@ -6,6 +6,7 @@ This repo is a Claude Code plugin marketplace (`.claude-plugin/marketplace.json`
 - **Description = trigger.** Skills and agents are chosen from their `description` alone. Include the user phrases and situations that should trigger them.
 - **Agents are leaves.** They do one job and return. Orchestration lives in skills (main session) and workflows. Don't write agents that delegate.
 - **Agents pin `model` and `effort`** in frontmatter, so they don't depend on the session's settings. Use `opus` with `effort: high` for design, root cause, cross-cutting review, and verification, where the output must be right. Use `sonnet` for checklist-driven narrow reviewers (the stack and practice pack reviewers, and core's `api-designer` and `perf-reviewer`) and for other narrower or mechanical work, with `effort: medium` (`api-designer` and `perf-reviewer` keep `high`). Builder and implementer agents that produce a whole artifact (code for a slice, infra and CI, a PRD: `implementer`, `platform-engineer`, `product-analyst`) use `opus` with `effort: medium`. They need the stronger model, and the review, verification, or ★ gate that follows them is where `high` pays off. Skills don't set either, so the user's choice drives the main session.
+- **Reviewers stay read-only.** A reviewer's "if the toolchain is available, run X" line names only commands that don't write into the checkout (builds into ignored dirs like `bin/` or `obj/` are fine), or runs them in a throwaway worktree. Check findings about generated or sidecar files from git before running anything.
 - **Workflows** (`plugins/laa/workflows/*.js`):
   - They're plain JS with `export const meta` as a pure literal.
   - No `Date.now()`, `Math.random()`, or Node APIs.
@@ -30,6 +31,8 @@ Work on a branch (`feat/…`, `fix/…`), or in a git worktree when the checkout
 Any change to a skill, agent, or workflow prompt that changes behavior needs:
 1. an eval case in `plugins/<plugin>/evals/<case>/` (or the repo-level `evals/<case>/` when it needs several plugins loaded) that fails before the change and passes after it, and
 2. a `version` bump in that plugin's `.claude-plugin/plugin.json` (patch for wording, minor for new behavior).
+
+The eval must use a different resource, scenario, or setting than any example in the skill or agent it tests. If pasting the skill's own example would pass every grader, the case measures recall, not whether the rule transfers.
 
 ## Checks
 ```
