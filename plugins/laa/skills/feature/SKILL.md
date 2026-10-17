@@ -37,6 +37,8 @@ Put the size in the mode line, and say why in one line.
 ## 2. Explore
 Launch 2–3 `laa:explorer` agents **in parallel** (one message, several Agent calls), each on a different area this feature touches, such as the entry points, the domain/data layer, and a similar existing feature to copy. Then read the key files they list.
 
+When the feature encodes an external tool's, library's, or service's behavior (CLI flags, config keys, defaults, file formats, current versions), launch a `general-purpose` research agent in the same message. It checks the official docs, the changelog, or the published package, and returns the facts the feature depends on, each with its source. Facts from memory go stale, so build and review against this list.
+
 ## 3. Clarify
 Using **AskUserQuestion**, ask only what the code and request can't answer: behavior at edge cases, scope boundaries, backward compatibility, and permissions/tenancy. Offer concrete options with a recommendation. Wait for answers.
 
@@ -59,7 +61,11 @@ Turn the blueprint's build sequence into work items: `{ id, title, spec, files, 
 4. Remove the worktrees and branches once merged (`git worktree remove`, `git branch -d`).
 
 ## 7. Review
-Call the **Workflow** tool with `name: "laa:review-panel"` and `args: { base: <branch point>, requirements: <acceptance criteria>, extraReviewers: <installed stack and practice reviewers, picked as in /laa:review step 2, e.g. ["laa-go:go-reviewer", "laa-git:git-reviewer"]> }`. Fix confirmed findings and commit.
+Call the **Workflow** tool with `name: "laa:review-panel"` and `args: { base: <branch point>, requirements: <acceptance criteria, plus the focus below>, extraReviewers: <installed stack and practice reviewers, picked as in /laa:review step 2, e.g. ["laa-go:go-reviewer", "laa-git:git-reviewer"]> }`.
+- The per-slice reviews in step 6 already covered each slice's own files. In `requirements`, list which files they covered, and point the panel at what they couldn't see: the wiring shared across slices, the interactions between slices, and the acceptance criteria that span slices.
+- When step 2 produced verified facts about an external tool, add them, so the reviewers check the change against them. A small feature's single reviewer gets them in its prompt.
+
+Fix confirmed findings and commit.
 
 ## 8. Close the loop
 Run the `laa:retro` skill. Then end with the closing report: what shipped, the decisions made, the feature branch, follow-ups, and the learnings the retro logged. In **Next**, offer to open a PR.
