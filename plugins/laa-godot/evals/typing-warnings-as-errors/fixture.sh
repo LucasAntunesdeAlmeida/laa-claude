@@ -1,8 +1,10 @@
 #!/bin/sh
-# Seeds a Godot 4.7 project whose project.godot sets gdscript/warnings/treat_warnings_as_errors=true under
-# [debug], a Godot 3 key that Godot 4 doesn't have, and nothing else. The typing warnings
-# (untyped_declaration, unsafe_*) are off by default in Godot 4, so the untyped code in
-# inventory/inventory.gd raises nothing.
+# Seeds a Godot 4.7 project whose project.godot raises untyped_declaration to error, but under a
+# [gdscript] section as warnings/untyped_declaration=2. A section name is the first segment of the key,
+# so that's the setting gdscript/warnings/untyped_declaration, which doesn't exist: the real one is
+# debug/gdscript/warnings/untyped_declaration ([debug] + gdscript/warnings/...). Godot ignores the
+# unknown key, the typing warnings stay off (their default), and the untyped code in
+# inventory/inventory.gd raises nothing. No unsafe_* warning is set either.
 set -eu
 
 mkdir -p inventory
@@ -18,9 +20,13 @@ config/name="Lantern Keep"
 config/features=PackedStringArray("4.7", "Forward Plus")
 run/main_scene="res://main.tscn"
 
-[debug]
+[gdscript]
 
-gdscript/warnings/treat_warnings_as_errors=true
+warnings/untyped_declaration=2
+
+[rendering]
+
+textures/canvas_textures/default_texture_filter=0
 INI
 
 cat > inventory/inventory.gd <<'GD'

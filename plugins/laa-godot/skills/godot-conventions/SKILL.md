@@ -10,7 +10,8 @@ description: Godot 4 game development conventions for GDScript (static typing an
 ## Engine version
 - Read `config/features` in `project.godot` (for example `PackedStringArray("4.7")`) before writing code, and only use features that version has. Target the current stable 4.x for new projects (4.7 as of this writing). Use the standard editor build unless the project uses C#.
 - Features you may need to check against that line:
-  - **4.4**: typed dictionaries (`Dictionary[StringName, int]`), `@export_tool_button`, `.uid` files beside scripts and shaders, physics interpolation in 2D and 3D, Jolt built in (opt-in).
+  - **4.3**: physics interpolation in 2D.
+  - **4.4**: typed dictionaries (`Dictionary[StringName, int]`), `@export_tool_button`, `.uid` files beside scripts and shaders, physics interpolation in 3D, Jolt built in (opt-in).
   - **4.5**: `@abstract` classes and methods, variadic functions (`func log_all(...args: Array)`).
   - **4.6**: Jolt is the default 3D physics engine for *new* projects. Existing projects keep their `physics/3d/physics_engine` setting.
   - **4.7**: `Tween.tween_await(signal)`, the Asset Store (replaces the Asset Library), per-platform export template downloads.
@@ -47,7 +48,7 @@ description: Godot 4 game development conventions for GDScript (static typing an
 
 ## Scene architecture
 - **Call down, signal up.** A parent starts behavior by calling methods on its children or setting their properties. A child reports what happened through signals and never reaches up (`get_parent()`, `../..` paths, `owner.some_method()`). Siblings talk through their common ancestor.
-- **Inject dependencies.** When a scene needs something from outside, the parent passes it in: a node reference, a `Callable`, or an exported `NodePath`. Make the scene a `@tool` script that returns messages from `_get_configuration_warnings()` when a dependency is missing, and call `update_configuration_warnings()` when it changes, so the editor flags it.
+- **Inject dependencies.** When a scene needs something from outside, the parent passes it in: a node reference, a `Callable`, or an exported `NodePath`. Make the scene a `@tool` script that returns messages from `_get_configuration_warnings()` when a dependency is missing, and call `update_configuration_warnings()` when it changes, so the editor flags it. A `@tool` script runs `_ready`, `_process`, and setters in the editor too, so start gameplay callbacks with `if Engine.is_editor_hint(): return`.
 - Every scene should run on its own (F6) with stub dependencies. If it can't, it's coupled to its surroundings.
 - Top-level tree: a `Main` node (`main.gd`) with a `World` (swap its children to change levels) and a `GUI` (`Control`). A node is a child only when it belongs to its parent and should be freed with it.
 - **Autoloads** only for systems that own their data, need to be reached from everywhere, and stand alone: save system, settings, audio buses, scene transitions. They are global state, so every caller depends on them. Prefer, in order:
@@ -81,7 +82,7 @@ description: Godot 4 game development conventions for GDScript (static typing an
 ## Performance
 - Profile before optimizing: the Debugger's Profiler and Monitors, or the `Performance` singleton. A node count that keeps rising (`OBJECT_NODE_COUNT`) means nodes are leaking.
 - Movement and physics in `_physics_process(delta)` (fixed tick, 60 Hz by default), visuals in `_process(delta)`. Scale manual movement by `delta`. `CharacterBody2D.move_and_slide()` applies `delta` itself, so set `velocity` in units per second and don't multiply it by `delta`.
-- Turn on physics interpolation (`physics/common/physics_interpolation`) for smooth motion on high-refresh displays, and call `reset_physics_interpolation()` after teleporting a node.
+- Turn on physics interpolation (`physics/common/physics_interpolation`, 2D since 4.3, 3D since 4.4) for smooth motion on high-refresh displays, and call `reset_physics_interpolation()` after teleporting a node.
 - Use signals, not polling: an `Area2D`/`Area3D` instead of distance checks every frame, a `Timer` instead of counting frames. Turn off processing for off-screen entities (`VisibleOnScreenEnabler2D`, `set_process(false)`).
 - Pool objects that spawn many times per second (projectiles, hit effects): create them up front, hide and disable them (`process_mode = PROCESS_MODE_DISABLED`) instead of freeing, and reset their state in a `reset()` method. `_ready()` doesn't run again when a pooled node is reused.
 - Avoid `get_node()`, `find_child()`, `get_tree().get_nodes_in_group()`, and string building inside per-frame code. Cache what you need.

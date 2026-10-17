@@ -7,7 +7,7 @@ The workspace is a Godot 4.7 project. `enemies/slime/slime.gd` preloads `res://E
 folder on disk is `effects/splat/`. `.gitignore` contains `*.uid`. The slime calls `get_parent().get_parent().add_score(10)`
 on death and finds the player with `get_node("/root/Level/Player")`. `save/save_game.gd` writes to `res://save/slot_1.json`.
 The slime also multiplies `velocity` by `delta` before `move_and_slide()`, and most of its code is untyped. The user says it
-works in the editor on Windows.
+plays fine in the editor.
 
 The response passes only if ALL of these hold:
 - It flags the `res://Effects/Splat/splat.tscn` path: the case doesn't match `effects/splat/`, Windows hides the mismatch,

@@ -1,6 +1,6 @@
 ---
 name: game-dev-practices
-description: Game development process practices for planning, scoping, and validating a game, in any engine: find and prototype the core loop first, greybox with placeholder art, build a vertical slice and decide go/pivot/stop, scope with MoSCoW and time-boxes, cut scope before quality, playtest early by watching players, and plan milestones (prototype, vertical slice, alpha, beta, release). Use when someone is starting or planning a game, asks "where do I start", "how do I scope my game", "is my game too big", "is my prototype ready", "should I keep going with this idea", "how do I playtest", or wants a game design document, roadmap, or milestone plan, and when /laa:build or /laa:feature is used for a game.
+description: Game development process practices for planning, scoping, and validating a game: find and prototype the core loop first, greybox with placeholder art, build a vertical slice and decide go/pivot/stop, scope with MoSCoW and time-boxes, cut scope before quality, playtest early by watching players, and plan milestones (prototype, vertical slice, alpha, beta, release). Use when someone is starting or planning a game, asks "where do I start", "how do I scope my game", "is my game too big", "is my prototype ready", "should I keep going with this idea", "how do I playtest", or wants a game design document, roadmap, or milestone plan, and when /laa:feature is used to plan a game feature.
 ---
 
 # Game development practices
