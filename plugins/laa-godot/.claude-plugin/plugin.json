@@ -1,0 +1,12 @@
+{
+  "name": "laa-godot",
+  "version": "0.1.0",
+  "description": "Godot 4 / GDScript stack pack for the laa toolkit: GDScript and engine conventions, game-dev process practices, and a Godot-specific reviewer.",
+  "author": {
+    "name": "Lucas Almeida"
+  },
+  "homepage": "https://github.com/LucasAntunesdeAlmeida/laa-claude#readme",
+  "repository": "https://github.com/LucasAntunesdeAlmeida/laa-claude",
+  "license": "MIT",
+  "keywords": ["godot", "gdscript", "gamedev", "game-development", "gut", "gdunit4"]
+}
