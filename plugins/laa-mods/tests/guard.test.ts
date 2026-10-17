@@ -213,6 +213,74 @@ describe('default-branch guard', () => {
     expect(denied(await $.tool.call(bash('git -C C:/other commit -m a; git -C C:/other commit -m b')))).toBe(false)
   })
 
+  test('ignores a commit that is only text in a heredoc that cat or tee reads', async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash("cat >> notes.md <<'EOF'\nthe git commit failed\nEOF")))).toBe(false)
+    expect(denied(await $.tool.call(bash('cat > a.txt <<EOF\ngit commit -m x\nEOF\necho done')))).toBe(false)
+    expect(denied(await $.tool.call(bash('cat > a.txt <<-"EOF"\n\tgit commit -m x\n\tEOF')))).toBe(false)
+    expect(denied(await $.tool.call(bash("mkdir -p d && tee -a d/log.md >/dev/null <<'EOF'\ngit commit -m x\nEOF")))).toBe(false)
+    expect(denied(await $.tool.call(bash("X=$(cat <<'EOF'\ngit commit -m x\nEOF\n)\necho \"$X\"")))).toBe(false)
+    // Regression guard: a PowerShell here-string was already skipped whole as a quoted string.
+    expect(denied(await $.tool.call(powershell("$m = @'\ngit commit -m x\n'@; Set-Content a.txt $m")))).toBe(false)
+  })
+
+  test('still sees a commit around a heredoc, or one a shell reads from it', async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash("cat > a.txt <<'EOF'\nhello\nEOF\ngit commit -m x")))).toBe(true)
+    expect(denied(await $.tool.call(bash('git commit -F - <<EOF\nfix: x\nEOF')))).toBe(true)
+    expect(denied(await $.tool.call(bash('cat <<EOF > a.txt && git commit -m x\nhello\nEOF')))).toBe(true)
+    // An apostrophe in a body or a comment must not open a quote that hides the commit after it.
+    expect(denied(await $.tool.call(bash("cat > a.txt <<'EOF'\ndon't\nEOF\ngit commit -m 'x'")))).toBe(true)
+    expect(denied(await $.tool.call(bash("# don't forget\ncat > f <<EOF\nit's\nEOF\ngit commit -m 'x'")))).toBe(true)
+    // With no end line, the << may be a shift rather than a heredoc, so what follows still counts.
+    expect(denied(await $.tool.call(bash("cat <<'EOF'\ngit commit -m x")))).toBe(true)
+    expect(denied(await $.tool.call(bash('echo $((1 << n))\ngit commit -m x')))).toBe(true)
+    expect(denied(await $.tool.call(bash('echo $((1<<n))\ngit commit -m x\nn')))).toBe(true)
+  })
+
+  test('counts a heredoc body that may run: read by a shell, expanded, or written and then run', async ($, on) => {
+    fakeRepo(on)
+    for (const reader of ['bash', '/bin/bash', 'sh -s', '. /dev/stdin', '$SHELL', 'sudo -s', 'make -f -', 'cmd']) {
+      expect(denied(await $.tool.call(bash(`${reader} <<'EOF'\ngit commit -m x\nEOF`)))).toBe(true)
+    }
+    expect(denied(await $.tool.call(bash("bash<<'EOF'\ngit commit -m x\nEOF")))).toBe(true)
+    expect(denied(await $.tool.call(bash('cat >> notes.md <<EOF\nCommitted: $(git commit -q -m x && git rev-parse HEAD)\nEOF')))).toBe(true)
+    expect(denied(await $.tool.call(bash("cat > /tmp/s.sh <<'EOF'\ngit commit -m x\nEOF\nbash /tmp/s.sh")))).toBe(true)
+    expect(denied(await $.tool.call(bash("cat > s.sh <<'EOF' && chmod +x s.sh && ./s.sh\ngit commit -m x\nEOF")))).toBe(true)
+    expect(denied(await $.tool.call(bash("cat > s.sh <<'EOF'\ngit commit -m x\nEOF\n. ./s.sh")))).toBe(true)
+    expect(denied(await $.tool.call(bash("cat > s.txt <<'EOF'\ngit commit -m x\nEOF\npython3 run.py s.txt")))).toBe(true)
+    for (const run of ['timeout 60 ./s.sh', 'winpty ./s.sh', 'start s.sh', 'cp s.sh .git/hooks/post-merge']) {
+      expect(denied(await $.tool.call(bash(`cat > s.sh <<'EOF'\ngit commit -m x\nEOF\n${run}`)))).toBe(true)
+    }
+    expect(denied(await $.tool.call(bash("cat > justfile <<'EOF'\nc:\n    git commit -m x\nEOF\njust c")))).toBe(true)
+    expect(denied(await $.tool.call(bash("cat <<'EOF' | tee f.sh >/dev/null\n#!/bin/sh\ngit commit -m x\nEOF\nnice ./f.sh")))).toBe(true)
+  })
+
+  test('leaves the command as it is where it cannot follow the quoting', async ($, on) => {
+    fakeRepo(on)
+    for (const command of [
+      'echo \\ #; git commit -m x',
+      'y="foo # c"; echo ${y%% #*}; git commit -m x',
+      "echo $'a\\'b' 'c #d'; git commit -m x",
+      "echo \"$(echo \"it's\")\"\necho 'a #b'; git commit -m x",
+      "gh pr create --body \"$(cat <<'EOF'\nSupport 5\" displays\nEOF\n)\"\necho \"chore: refs #12\" && git commit -m y",
+      "echo \"${x:-\"it's\"}\"\necho 'Notes (cat <<EOF keeps formatting)\nand more' && git commit -m x\nEOF",
+    ]) {
+      expect(denied(await $.tool.call(bash(command)))).toBe(true)
+    }
+  })
+
+  test('takes a << in a comment or a string for text, not a heredoc', async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash("# append notes with cat <<EOF\ngit commit -m x\ncat >> notes.md <<'EOF'\ndone\nEOF")))).toBe(true)
+    expect(denied(await $.tool.call(bash("echo \"plan: write it with cat <<EOF\nthen commit\"\ngit commit -m x\ncat > f <<'EOF'\nhi\nEOF")))).toBe(true)
+    expect(denied(await $.tool.call(bash("echo \"a \\\" ; cat <<EOF b\"\ngit commit -m x\ncat > f <<'EOF'\nhi\nEOF")))).toBe(true)
+    expect(denied(await $.tool.call(bash("X=$(cat <<'EOF'\nnote\nEOF)\ngit commit -m \"$X\"\ncat > f <<'EOF'\ny\nEOF")))).toBe(true)
+    expect(denied(await $.tool.call(bash("cat <<< 'x'\ngit commit -m x\ncat > f <<'EOF'\ny\nEOF")))).toBe(true)
+    // PowerShell has no heredoc: its text is read as it is.
+    expect(denied(await $.tool.call(powershell("$s = @\"\nuse cat <<EOF\n\"@\ngit commit -m x\n$t = @'\nEOF\n'@")))).toBe(true)
+  })
+
   test('sees a commit behind any git option', async ($, on) => {
     fakeRepo(on, { cwd: 'C:/other' })
     expect(denied(await $.tool.call(bash(`git --no-pager -C ${ROOT} commit -m x`)))).toBe(true)

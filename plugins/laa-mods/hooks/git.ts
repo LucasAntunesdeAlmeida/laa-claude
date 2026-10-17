@@ -82,6 +82,112 @@ const STEP = new RegExp(
   'gi',
 )
 
+// A heredoc operator, from its `<<`: `<<WORD` or `<<-WORD`, the word maybe quoted ('W', "W", \W).
+const HEREDOC = /^<<(-?)[ \t]*(?:'([^'\n]*)'|"([^"\n]*)"|(\\?)([\w.-]+))/
+// Where a command starts: the start, a separator, an opening bracket or backtick, or a keyword before a command.
+const CMD = String.raw`(?:^|[;&|(\x60{\n]|\b(?:then|do|else|if|while|until)\b|!)\s*`
+// Anything that may run code from a file or from its input: a shell or interpreter, `.`, source, exec, eval, a
+// wrapper or task runner that runs its arguments or a file it finds (sudo, xargs, timeout, make, npm, just), an
+// opener, chmod, or a command named by a path or a variable.
+const RUNS_CODE = new RegExp(
+  String.raw`(?:^|[^\w.$-])(?:(?:ba|z|da|k|c|fi|tc|tcl|a)?sh|pwsh|powershell|cmd|python[\d.]*|py|node|deno|bun|ruby|perl|php|make|just|task|npm|npx|pnpm|yarn|source|exec|eval|sudo|su|doas|xargs|env|nohup|time|timeout|winpty|watch|parallel|start|open|xdg-open|explorer|invoke-item|chmod)(?:\.exe)?(?![\w.-])` +
+    String.raw`|${CMD}(?:"?\$|[^\s;&|()<>]*[\\/]|\.(?=\s))`,
+  'i',
+)
+
+// A Bash command with the heredoc bodies that are only text blanked, so `git commit` in a note isn't a commit and
+// an apostrophe in one doesn't open a quote that hides what follows. It fails closed, changing nothing unless:
+// - it can follow the quoting exactly: no comment, backslash, backtick, `$'`, `$"`, or `$(` or `${` inside double
+//   quotes;
+// - every `<<` has an end line (one without may be a shift, `$((a << b))`);
+// - nothing may run code a body holds (RUNS_CODE).
+// Then it blanks a body only when `cat` or `tee` reads it and isn't piped on, nothing in it expands ($( or a
+// backtick under an unquoted word), and the file it's written to isn't named again.
+export const withoutHeredocs = (command: string) => {
+  // Each heredoc on the line being read; once the line ends, each body: where it starts and where its end line
+  // starts, whether it's text, and the files it's written to.
+  let pending: { word: string; dash: boolean; byCat: boolean; isQuoted: boolean; files: string[] }[] = []
+  const bodies: { from: number; to: number; isText: boolean; files: string[] }[] = []
+  let quote = ''
+  for (let i = 0; i < command.length; i++) {
+    const c = command[i]
+    const next = command[i + 1]
+    if (quote === "'") {
+      if (c === "'") quote = ''
+    } else if (quote === '"') {
+      if (c === '`' || (c === '$' && (next === '(' || next === '{'))) return command
+      if (c === '\\') i++
+      else if (c === '"') quote = ''
+    } else if (c === '\\' || c === '`' || (c === '$' && (next === "'" || next === '"'))) {
+      return command
+    } else if (c === '#' && (i === 0 || /[\s;&|(]/.test(command[i - 1] ?? ''))) {
+      return command
+    } else if (c === "'" || c === '"') {
+      quote = c
+    } else if (c === '<' && next === '<' && command[i + 2] !== '<' && command[i - 1] !== '<') {
+      const m = HEREDOC.exec(command.slice(i))
+      if (!m) return command
+      // The command the heredoc feeds, up to the separators around it on its line.
+      const nl = command.indexOf('\n', i)
+      const before = command.slice(command.lastIndexOf('\n', i - 1) + 1, i).split(/[;&|(]/).pop() ?? ''
+      const rest = command.slice(i + m[0].length, nl < 0 ? undefined : nl)
+      const after = rest.split(/[;&|)]/)[0] ?? ''
+      // Piped on, the body may reach a `tee` that writes a script, or anything else.
+      const isPiped = /(?<!\|)\|(?!\|)/.test(rest)
+      const isTee = /^\s*tee(?:\s|$)/.test(before)
+      const files = [...`${before} ${after}`.matchAll(/>>?\s*([^\s;&|<>()]+)/g)].map(f => f[1] ?? '')
+      if (isTee) files.push(...`${before.replace(/^\s*tee/, '')} ${after}`.split(/\s+/).filter(w => w && !w.startsWith('-')))
+      pending.push({
+        word: m[2] ?? m[3] ?? m[5] ?? '',
+        dash: m[1] === '-',
+        byCat: !isPiped && (isTee || /^\s*cat(?:\s|$)/.test(before)),
+        isQuoted: m[5] === undefined || m[4] === '\\',
+        files: files.map(f => f.replace(/["']/g, '').split(/[\\/]/).pop() ?? f),
+      })
+      i += m[0].length - 1
+    } else if (c === '\n' && pending.length > 0) {
+      let at = i + 1
+      for (const h of pending) {
+        const end = endLine(command, at, h.word, h.dash)
+        if (end < 0) return command
+        // An unquoted word lets $( and backticks in the body run.
+        const isText = h.byCat && (h.isQuoted || !/\$\(|`/.test(command.slice(at, end)))
+        bodies.push({ from: at, to: end, isText, files: h.files })
+        const eol = command.indexOf('\n', end)
+        at = eol < 0 ? command.length : eol + 1
+      }
+      pending = []
+      i = at - 1
+    }
+  }
+  if (quote || pending.length > 0) return command
+  const blank = (chars: string[], b: { from: number; to: number }) => {
+    for (let k = b.from; k < b.to; k++) if (chars[k] !== '\n') chars[k] = ' '
+  }
+  const outside = command.split('')
+  for (const b of bodies) blank(outside, b)
+  const rest = outside.join('')
+  if (RUNS_CODE.test(rest)) return command
+  // A file named again (run, sourced, copied) may run what the body wrote; one mention is its own redirect.
+  const isNamedAgain = (f: string) => f === '' || rest.split(f).length > 2
+  const out = command.split('')
+  for (const b of bodies) if (b.isText && !b.files.some(isNamedAgain)) blank(out, b)
+  return out.join('')
+}
+
+// Where a heredoc's end line starts: the first line from `at` holding only its word (after leading tabs, for <<-),
+// or the word and the `)` of a $( around the heredoc. -1 when there's none.
+const endLine = (command: string, at: number, word: string, dash: boolean) => {
+  for (let k = at; ; ) {
+    const nl = command.indexOf('\n', k)
+    const line = command.slice(k, nl < 0 ? undefined : nl).replace(/\r$/, '')
+    const bare = dash ? line.replace(/^\t+/, '') : line
+    if (bare === word || bare.startsWith(`${word})`)) return k
+    if (nl < 0) return -1
+    k = nl + 1
+  }
+}
+
 // The directories git's options before a subcommand point it at: -C, --work-tree, and the checkout of a --git-dir.
 const gitDirs = (options: string) =>
   [...options.matchAll(new RegExp(`(?:-C\\s+|--work-tree(?:=|\\s+)|--git-dir(?:=|\\s+))${ARG}`, 'g'))].map(m => {
@@ -93,8 +199,10 @@ const gitDirs = (options: string) =>
 // ('' for that directory itself); empty when it doesn't commit. It follows the cds before each commit, the
 // directory stack that ( { pushd and Push-Location save and ) } popd and Pop-Location restore, and each
 // commit's -C. Where a parse can't be sure (a cd that may fail before ||, `cd -`, a popd past what the command
-// pushed), it keeps every directory the commit could be in, so the guard checks them all.
-export const commitDirs = (command: string): string[] => {
+// pushed), it keeps every directory the commit could be in, so the guard checks them all. In a Bash command,
+// comments and text-only heredoc bodies don't count (`withoutHeredocs`).
+export const commitDirs = (full: string, isBash = false): string[] => {
+  const command = isBash ? withoutHeredocs(full) : full
   let dirs = ['']
   const stack: string[][] = []
   const seen = new Set(dirs)
