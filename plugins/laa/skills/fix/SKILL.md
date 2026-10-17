@@ -60,6 +60,8 @@ For standard and hard bugs, call the **Workflow** tool with `name: "laa:review-p
 `args: { base: <branch point>, requirements: "Fix: <root cause>. Must not change behavior beyond the fix." }`.
 For trivial ones, a single `laa:reviewer` agent is enough. Address any confirmed findings, then commit on the work branch.
 
+When the fix makes a security check accept more (a guard, validator, sanitizer, or authorization rule that now lets through what it refused), add to `requirements` (or the single reviewer's prompt): run the old and new code over the same inputs, and report every input the old code refused that the new code allows. Tests that pass don't show this.
+
 ## 7. Close the loop
 - Run the **retro** step (the `laa:retro` skill): was this a bug *class* that could recur? If so, propose a prevention, such as a lint rule, a hook, a repo-local skill rule, or a test helper. Suggestions only; don't apply them without approval.
 - End with the closing report: root cause (`path:line`), fix, test added, branch, follow-ups, and the learnings the retro logged. In **Next**, offer to open a PR.
