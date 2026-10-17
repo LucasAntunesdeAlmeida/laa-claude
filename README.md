@@ -231,6 +231,8 @@ Copy `plugins/laa-go`, rename it, and write `skills/<stack>-conventions/SKILL.md
 
 Practice packs hold rules that don't depend on the language: git, docs, Docker, API docs and tests, and future ones like observability. Copy `plugins/laa-git`, rename it, and write `skills/<practice>-conventions/SKILL.md` and `agents/<practice>-reviewer.md`. The skill description must say when it applies (e.g. "when writing a commit message"), because nothing else triggers it. Register the pack in `.claude-plugin/marketplace.json`, and add its reviewer to the practice list in `plugins/laa/skills/review/SKILL.md` step 2.
 
+The pack's own eval cases (`plugins/<pack>/evals/`) are the before/after discriminators. The cross-plugin `/laa:review` case in `evals/` is a regression guard, since an installed pack's reviewer is usually picked even without the review-skill line: copy `evals/review-adds-docker-reviewer`, and keep "Regression guard rather than a before/after discriminator" in its description.
+
 ## Contributing
 
 Issues and PRs are welcome. Before opening a PR, read the authoring rules in [CLAUDE.md](CLAUDE.md). In short:
