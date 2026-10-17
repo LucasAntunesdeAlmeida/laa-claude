@@ -28,7 +28,7 @@ Steps that call a workflow use the **Workflow** tool. You may not be able to use
 ## Phase 1: Intake → PRD
 1. Delegate to the `laa:product-analyst` agent with the idea. It returns a PRD draft with open questions.
 2. Ask the open questions with **AskUserQuestion** (at most 4 per round, each with concrete options and a recommendation). Also confirm these if they weren't stated:
-   - Preferred stack. Default to what the installed stack packs cover (`laa-go`, `laa-dotnet`, `laa-python`, `laa-js`).
+   - Preferred stack. Default to what the installed stack packs cover (`laa-go`, `laa-dotnet`, `laa-python`, `laa-js`, and `laa-godot` for games).
    - Hosting target: cloud provider, or a PaaS such as Fly, Render, or Railway.
    - Tenancy model.
    - Budget constraints.

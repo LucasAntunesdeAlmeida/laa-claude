@@ -41,6 +41,7 @@ The panel always runs the core dimensions: correctness, completeness, security, 
   - `.cs`, `.csproj`, `.sln`, `.slnx`, `Directory.Build.props`, `Directory.Build.targets`, `Directory.Packages.props`, `global.json` → `laa-dotnet:dotnet-reviewer`
   - `.py`, `pyproject.toml`, `uv.lock`, `requirements*.txt` → `laa-python:python-reviewer`
   - `.ts`, `.tsx`, `.js`, `.mjs`, `.cjs`, `package.json`, lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`), `tsconfig*.json`, ESLint or Biome config (`eslint.config.*`, `.eslintrc*`, `biome.json`) → `laa-js:js-reviewer`
+  - `.gd`, `.tscn`, `.tres`, `.gdshader`, `project.godot`, `export_presets.cfg` → `laa-godot:godot-reviewer`. In a repo with a `project.godot`, `.cs` files get it too, next to `laa-dotnet:dotnet-reviewer`
 - Practice reviewers for the installed practice packs. These don't depend on the language, so they join every review:
   - `laa-git:git-reviewer`: commit messages, breaking-change markers, commit shape, and files that shouldn't be committed.
   - `laa-docs:docs-reviewer`: README and onboarding docs drift (commands, env vars, ports, versions).

@@ -14,6 +14,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 | `laa-dotnet` | .NET/C# conventions skill + `dotnet-reviewer` agent |
 | `laa-python` | Python conventions skill (FastAPI/Django, SQLAlchemy, async) + `python-reviewer` agent |
 | `laa-js` | Node.js conventions skill for TypeScript and JavaScript + `js-reviewer` agent |
+| `laa-godot` | Godot 4 / GDScript conventions skill, game-dev practices skill (core loop, vertical slice, scope, playtesting) + `godot-reviewer` agent |
 | `laa-git` | Practice pack, any language: git conventions skill (Conventional Commits, branches, history, PRs) + `git-reviewer` agent |
 | `laa-docs` | Practice pack, any language: README/onboarding conventions skill + `docs-reviewer` agent (catches docs drift) |
 | `laa-docker` | Practice pack, any language: Docker-first local development skill (dependencies, tests, and debugging in containers when Docker is available) + `docker-reviewer` agent (catches local-environment drift) |
@@ -37,7 +38,7 @@ In Claude Code:
 ```
 /plugin marketplace add LucasAntunesdeAlmeida/laa-claude
 /plugin install laa@laa
-/plugin install laa-go@laa        # and/or laa-dotnet@laa, laa-python@laa, laa-js@laa
+/plugin install laa-go@laa        # and/or laa-dotnet@laa, laa-python@laa, laa-js@laa, laa-godot@laa
 /plugin install laa-git@laa       # and/or laa-docs@laa, laa-docker@laa, laa-api@laa
 /plugin install laa-mods@laa      # optional: needs a Claude Code build with mods (function hooks)
 ```
