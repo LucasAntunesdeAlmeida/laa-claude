@@ -78,6 +78,108 @@ describe('default-branch guard', () => {
     expect(denied(await $.tool.call(bash('echo "git commit"')))).toBe(false)
   })
 
+  test('sees a commit that a string runs: $( or a backtick in double quotes, a shell -c, eval', async ($, on) => {
+    fakeRepo(on, { cwd: 'C:/other' })
+    for (const command of [
+      `bash -c "cd ${ROOT} && git commit -m x"`,
+      `sh -c 'cd ${ROOT} && git commit -m x'`,
+      `bash -lc 'git -C ${ROOT} commit -m x'`,
+      `eval "git -C ${ROOT} commit -m x"`,
+      `echo "$(cd ${ROOT} && git commit -m x)"`,
+      `echo "\`git -C ${ROOT} commit -m x\`"`,
+      `echo \`git -C ${ROOT} commit -m x\``,
+      `bash -c "$(cat <<'EOF'\ncd ${ROOT} && git commit -m x\nEOF\n)"`,
+    ]) {
+      expect(denied(await $.tool.call(bash(command)))).toBe(true)
+    }
+    expect(denied(await $.tool.call(powershell(`pwsh -Command "git -C ${ROOT} commit -m x"`)))).toBe(true)
+    expect(denied(await $.tool.call(powershell(`Write-Output "$(git -C ${ROOT} commit -m x)"`)))).toBe(true)
+    expect(denied(await $.tool.call(bash(`cmd /c "cd ${ROOT} && git commit -m x"`)))).toBe(true)
+  })
+
+  test('still reads a string that only mentions a commit as text', async ($, on) => {
+    fakeRepo(on, { cwd: 'C:/other' })
+    for (const command of [
+      `echo 'bash -c "git -C ${ROOT} commit -m x"'`,
+      `grep -n "git -C ${ROOT} commit" notes.md`,
+      `echo "then git -C ${ROOT} commit later" > /dev/null`,
+      `git log --grep 'git -C ${ROOT} commit'`,
+    ]) {
+      expect(denied(await $.tool.call(bash(command)))).toBe(false)
+    }
+  })
+
+  test('reads every shell -c spelling: option values, //c, and escaped quotes in the string', async ($, on) => {
+    fakeRepo(on, { cwd: 'C:/other' })
+    for (const command of [
+      `bash -c "echo \\"hi\\" && git -C ${ROOT} commit -m x"`,
+      `bash -o pipefail -c 'git -C ${ROOT} commit -m x'`,
+      `cmd //c "cd ${ROOT} && git commit -m x"`,
+      `powershell -NoProfile -ExecutionPolicy Bypass -Command "git -C ${ROOT} commit -m x"`,
+    ]) {
+      expect(denied(await $.tool.call(bash(command)))).toBe(true)
+    }
+    expect(denied(await $.tool.call(powershell(`powershell -NoProfile -ExecutionPolicy Bypass -Command "git -C ${ROOT} commit -m x"`)))).toBe(true)
+  })
+
+  test('reads only the $(…) of a double-quoted string, not the prose around it', async ($, on) => {
+    fakeRepo(on)
+    for (const command of [
+      "gh issue create --title x --body \"$(cat <<'EOF'\nThe guard misses git commit inside bash -c\nEOF\n)\"",
+      'echo "Built $(date +%F); next: git commit"',
+      'echo "cost \\$(none) then git commit"',
+    ]) {
+      expect(denied(await $.tool.call(bash(command)))).toBe(false)
+    }
+  })
+
+  test('takes the ) of a $( or a closing backtick as an argument, not a command start', async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash('echo $(date) cd ..; git commit -m x')))).toBe(true)
+    expect(denied(await $.tool.call(bash('echo $((1+2)) cd ..; git commit -m x')))).toBe(true)
+    expect(denied(await $.tool.call(bash('echo `date` cd /tmp; git commit -m x')))).toBe(true)
+  })
+
+  test('never lets an escaped quote outside a string open one', async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash('echo \\"hi\\" && git commit -m "x"')))).toBe(true)
+    expect(denied(await $.tool.call(bash('curl -d {\\"a\\":1} localhost && git commit -m "x"')))).toBe(true)
+    expect(denied(await $.tool.call(powershell('Write-Output `"hi`" ; git commit -m "x"')))).toBe(true)
+  })
+
+  test('leaves backticks as they are where bash does not pair them: comments and heredoc bodies', async ($, on) => {
+    fakeRepo(on, { cwd: 'C:/other' })
+    expect(denied(await $.tool.call(bash('# press the ` key to accept\ncd C:/r && x=`date` && git commit -m x')))).toBe(true)
+    expect(denied(await $.tool.call(bash('x=1;# press ` here\ncd C:/r\ny=2;# and ` there\ngit commit -m x')))).toBe(true)
+  })
+
+  test('reads a backticked commit in a quoted heredoc body as text', async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash("gh issue create --title x --body-file - <<'EOF'\nRun `git commit` after the review\nEOF")))).toBe(false)
+    expect(denied(await $.tool.call(bash("gh issue create --title x --body \"$(cat <<'EOF'\n- Refuse \"git commit\" hidden in strings; `git commit` inside `bash -c` is now seen.\nEOF\n)\"")))).toBe(false)
+  })
+
+  test('stays fast on a large command with many strings', async ($, on) => {
+    fakeRepo(on)
+    const rows = Array.from({ length: 1000 }, (_, i) => `  {"id": "item-${i}", "name": "Item ${i}"},`).join('\n')
+    const started = performance.now()
+    expect(denied(await $.tool.call(bash(`cat <<'EOF' | jq '.items | length'\n{"items": [\n${rows}\n]}\nEOF`)))).toBe(false)
+    expect(denied(await $.tool.call(bash(`bash x; ${'echo "a"; '.repeat(5000)}`)))).toBe(false)
+    expect(performance.now() - started).toBeLessThan(1000)
+  })
+
+  test('decides on a shell with many options in linear time', async ($, on) => {
+    fakeRepo(on)
+    const started = performance.now()
+    expect(denied(await $.tool.call(bash(`bash ${'--a '.repeat(40)}"x"; echo done`)))).toBe(false)
+    expect(performance.now() - started).toBeLessThan(500)
+  })
+
+  test('takes a case arm as a command start', async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash("case $x in\n  a) cat > notes.md <<'EOF'\nit's\nEOF\n  ;;\nesac\ngit commit -m 'x'")))).toBe(true)
+  })
+
   test('blocks a NotebookEdit on main', async ($, on) => {
     fakeRepo(on)
     expect(denied(await $.tool.call(notebook(`${ROOT}/src/explore.ipynb`)))).toBe(true)
