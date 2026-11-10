@@ -8,16 +8,18 @@ dir="${CLAUDE_PROJECT_DIR:-.}/.claude/laa"
 [ -f "$dir/learnings.md" ] || [ -f "$dir/project-map.md" ] || exit 0
 
 input=$(cat)
-# Everything after "prompt": in the hook JSON is enough to match on, minus the closing quote and brace.
-prompt=$(printf '%s' "$input" | sed -n 's/.*"prompt"[[:space:]]*:[[:space:]]*"//p' | sed 's/"[[:space:]]*}[[:space:]]*$//')
+# Take only the prompt's own string, from its opening quote to the first quote that isn't escaped: the
+# fields after it in the hook JSON aren't the user speaking. JSON encoders may escape an opening angle
+# bracket as a unicode escape, so the same sed turns that back into the bracket for the marker check below.
+prompt=$(printf '%s' "$input" | sed -En \
+  -e 's/.*"prompt"[[:space:]]*:[[:space:]]*"((\\.|[^"\\])*)".*/\1/' -e 't found' -e 'd' \
+  -e ':found' -e 's/[\]u003[cC]/</g' -e 'p')
 [ -n "$prompt" ] || exit 0
 
 # The harness injects subagent hand-backs and background-task notifications as user turns. They aren't
-# the user speaking, so they're never corrections. JSON encoders may escape the opening angle bracket
-# as a unicode escape, so turn that back into the bracket first.
-marked=$(printf '%s' "$prompt" | sed 's/[\]u003[cC]/</g')
+# the user speaking, so they're never corrections.
 for marker in '<agent-message' '[Subagent hand-back]' '<task-notification' '[SYSTEM NOTIFICATION'; do
-  case "$marked" in *"$marker"*) exit 0 ;; esac
+  case "$prompt" in *"$marker"*) exit 0 ;; esac
 done
 
 # English and Portuguese correction phrases. Keep the list tight: every false positive costs context.
@@ -36,5 +38,5 @@ if ! printf '%s' "$prompt" | grep -Eiq "$pattern"; then
 fi
 
 msg="The user's message may be a correction. Handle it first. Then, if it reveals a durable preference, convention, or repo fact (not a one-off), log it: on a work branch, append one entry to .claude/laa/learnings.md in the laa:retro format (scope, kind: correction, target, signal quoting the user, proposal, status: open) and say so in one line. On the default branch, write nothing: name the learning in one line and suggest /laa:retro."
-esc=$(printf '%s' "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')
-printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$esc"
+# The message has no quotes or backslashes, so it goes into the JSON as it is. Keep it that way.
+printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$msg"

@@ -29,7 +29,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 - On Windows, Git Bash: the hooks and scripts are POSIX `sh`.
 - Optional:
   - the Workflow tool, for the fan-out workflows. Without it, the skills run the same agents through the Agent tool.
-  - a Claude Code build with mods (function hooks), for `laa-mods`.
+  - Claude Code 2.1.299 or later, for `laa-mods`. Mods (function hooks) are on by default from 2.1.287, and `/laa-help` and the panes use `Text` props that 2.1.299 added; an older build doesn't draw them.
   - [graphify](#code-intelligence-graphify), for code-graph exploration.
 
 ## Install
@@ -40,7 +40,7 @@ In Claude Code:
 /plugin install laa@laa
 /plugin install laa-go@laa        # and/or laa-dotnet@laa, laa-python@laa, laa-js@laa, laa-godot@laa
 /plugin install laa-git@laa       # and/or laa-docs@laa, laa-docker@laa, laa-api@laa
-/plugin install laa-mods@laa      # optional: needs a Claude Code build with mods (function hooks)
+/plugin install laa-mods@laa      # optional: needs Claude Code 2.1.299 or later
 ```
 Then run `/laa:adopt` in a repo to map it and set it up.
 
@@ -84,7 +84,9 @@ Every pipeline sizes itself to the task. Trivial bugs and small features skip th
 - `/laa:migrate-sites <change>`: finds the sites only
 - `/laa:map-repo [focus]`
 
-**Plain-language requests:** when you describe a task instead of typing a command, Claude may not be allowed to start a workflow on its own. The skills then run the same agents in parallel through the Agent tool.
+**Plain-language requests:** when you describe a task instead of typing a command, Claude isn't allowed to start a workflow on its own. The skill asks once, as soon as it knows the run will fan out: `★ Run the fan-out as a workflow?` Choose **Workflow** to run the engine (it counts votes, merges duplicates, and orders the judges in code), or **Agents** to have Claude run the same agents by hand through the Agent tool. Without the Workflow tool there's no question, and the skill goes straight to agents.
+
+**Models:** agents pin their own model and effort, so a run doesn't depend on the session's settings: `opus` at high effort where the output must be right (design, root cause, review, verification), and `sonnet` for the checklist reviewers and mechanical work. A few calls run on `fable`, because one answer there steers everything after it: the cluster step of `investigate`, the judges and the synthesis of `design-panel`, and the verifiers of a `--thorough` review or a hard bug. Where Fable isn't available, those calls rerun on `opus`.
 
 ## How it fits together
 
@@ -168,7 +170,7 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
 
 The guard's scope is the `guard` option in `/config`: `adopted` (default: repos where `.claude/laa/` holds `learnings.md` or `project-map.md`), `always` (every git repo), or `off`.
 
-**Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it and `claude plugin test ./plugins/laa-mods` runs its tests. CI has no session to write the declarations, so it downloads the published copy (`mods/types/claude-code.d.ts` in the `anthropics/claude-code` repo) to `plugins/laa-mods/.claude-plugin/types/claude-code/index.d.ts`. That copy can lag behind the Claude Code release the mod is written against, so the CI type-check is non-blocking until it catches up; run tsc locally before merging. The mods API is early access and can change between Claude Code releases.
+**Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it and `claude plugin test ./plugins/laa-mods` runs its tests. CI has no session to write the declarations, so it downloads the published copy (`mods/types/claude-code.d.ts` in the `anthropics/claude-code` repo) to `plugins/laa-mods/.claude-plugin/types/claude-code/index.d.ts`. That copy can lag behind the Claude Code release the mod is written against, so the CI type-check is non-blocking until it catches up; run tsc locally before merging. The mods API still changes between Claude Code releases, so recheck the mod after an upgrade. Mod hooks don't run in Desktop WSL sessions, and nothing is drawn in `claude -p`, the Agent SDK, or cloud sessions; that's why the rest of the toolkit doesn't depend on `laa-mods`.
 
 ## Spinner tips (optional)
 To learn the toolkit while Claude works, add these to `~/.claude/settings.json`. They join Claude Code's own tips under a `laa` label, and each waits three sessions before it shows again. Tip objects and `label` only work from user settings; project settings take plain strings only.
@@ -222,6 +224,7 @@ Cases live in `plugins/<plugin>/evals/<case>/prompt.md` + `graders/*.md`. Scaffo
 - Prefer `regex` and `file_exists` graders on a written file over an `llm` rubric on a long reply. Judges get noisy on long outputs.
 - A `tool_used: Skill` grader (`skill-fired.md`) only makes sense for a plain-language prompt, where it shows the skill was chosen. A prompt that types the command (`/laa:review ...`) loads the skill without a Skill tool call, so the grader fails every run. Leave it out of those cases.
 - Windows can't run cases that grant `Bash`, because there's no sandbox backend. Use WSL2 for those.
+- **In CI**: the `evals` workflow (`.github/workflows/evals.yml`) runs a suite on demand from the Actions tab, with pinned models, a pass threshold, and a cost ceiling. It needs the `ANTHROPIC_API_KEY` repository secret, and it never starts on its own, because every run costs money.
 
 ## Adding a stack pack
 

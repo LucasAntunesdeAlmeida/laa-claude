@@ -7,7 +7,7 @@ How laa skills format what the user sees. Short, scannable, and the same every t
 
 ## Mode line: first line of the run
 `**laa:<skill>** · <size> · <workflow | agent> mode`
-For example: `**laa:migrate** · large · agent mode`. Leave out the parts that don't apply.
+For example: `**laa:migrate** · large · agent mode`. Leave out the parts that don't apply. When the run first has to ask whether to use a workflow (the skill's "Running the workflows" section), the mode isn't known yet: leave it out here and say it in one line after the answer.
 
 ## Step line: when a step starts
 `**▸ <n>/<last> · <Step title>** · <what runs, in a few words>`

@@ -77,6 +77,8 @@ describe('findings pane', () => {
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await $.ui.mount({ ...PANE, surface })
       expect(await ui.find({ type: 'Text', text: 'nil address dereference on legacy rows' })).toBeDefined()
+      const tag = JSON.stringify(await ui.find({ type: 'Text', text: 'HIGH' }))
+      expect(tag).toContain('"weight":"semibold"')
       expect(await ui.find({ type: 'Text', text: 'unescaped customer name' })).toBeUndefined()
       expect(await ui.find({ type: 'Button', key: 'fixHigh' })).toBeDefined()
       await ui.unmount()

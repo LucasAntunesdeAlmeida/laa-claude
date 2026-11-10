@@ -4,8 +4,8 @@ export const meta = {
   whenToUse: 'Called by /laa:build and /laa:feature, or typed as /laa:design-panel <requirements> for a standalone architecture decision. args: { requirements, context?, lenses? }',
   phases: [
     { title: 'Propose', detail: 'one architect per lens' },
-    { title: 'Judge', detail: 'independent judges score every proposal', model: 'opus' },
-    { title: 'Synthesize', detail: 'merge the winner with the best ideas from the others' },
+    { title: 'Judge', detail: 'independent judges score every proposal', model: 'fable' },
+    { title: 'Synthesize', detail: 'merge the winner with the best ideas from the others', model: 'fable' },
     { title: 'Deep-dive', detail: 'data model, API contract, threat model, scale risks, infra' },
   ],
 }
@@ -34,6 +34,17 @@ const fromText = (raw, key) => {
     try { return JSON.parse(text) } catch (e) { /* not JSON: treat as plain text */ }
   }
   return text ? { [key]: text } : {}
+}
+
+// A stage pinned to `fable` reruns once on `opus` when it throws or comes back empty: accounts and providers
+// without Fable reject the call, and losing the stage would lose the run. A stage the user skips looks the
+// same from here, so it is rerun too.
+const orOpus = (prompt, opts) => {
+  const rerun = () => {
+    log(`${opts.label}: no result on ${opts.model}; rerunning on opus`)
+    return spawn(prompt, { ...opts, model: 'opus' })
+  }
+  return agent(prompt, opts).then(r => (r == null ? rerun() : r), rerun)
 }
 
 const DEFAULT_LENSES = [
@@ -87,9 +98,9 @@ const rotated = j => entries.slice(j % entries.length).concat(entries.slice(0, j
 phase('Judge')
 const judgeLenses = ['a pragmatic CTO of a 5-person startup', 'a principal engineer who will be on call for this system']
 const judgments = (await parallel(judgeLenses.map((who, j) => () =>
-  spawn(`${brief}\n\nYou are ${who}. Score every proposal against the requirements. Be critical. ` +
+  orOpus(`${brief}\n\nYou are ${who}. Score every proposal against the requirements. Be critical. ` +
     `The order they're listed in means nothing; score each by its PROPOSAL number.\n\n${rotated(j)}`,
-    { label: `judge:${j + 1}`, phase: 'Judge', model: 'opus', effort: 'high', schema: SCORES })))).filter(Boolean)
+    { label: `judge:${j + 1}`, phase: 'Judge', model: 'fable', effort: 'high', schema: SCORES })))).filter(Boolean)
 
 const totals = proposals.map((_, i) => {
   const mine = judgments.flatMap(j => j.scores).filter(s => s.proposal === i + 1)
@@ -99,13 +110,14 @@ const totals = proposals.map((_, i) => {
 const winner = totals[0].proposal
 log(`Winner: proposal ${winner} (${totals[0].lens}) score ${totals[0].score.toFixed(1)}`)
 
+// The judges and the synthesis decide the blueprint everything after them builds on, so they run on `fable`.
 phase('Synthesize')
-const blueprint = await agent(
+const blueprint = await orOpus(
   `${brief}\n\nProposal ${winner} won the judge panel. Produce the FINAL blueprint: start from proposal ${winner}, ` +
   `graft in the best ideas the judges called out from the others, and fix every fatal flaw they found. ` +
   `Keep the same output structure (summary, components, data model, flows, decisions, failure modes, build sequence with parallelizable items, cost).\n\n` +
   `${listing}\n\n=== JUDGE SCORES ===\n${JSON.stringify(judgments, null, 2)}`,
-  { label: 'synthesize', phase: 'Synthesize', agentType: 'laa:architect' })
+  { label: 'synthesize', phase: 'Synthesize', agentType: 'laa:architect', model: 'fable' })
 
 phase('Deep-dive')
 const specialists = [

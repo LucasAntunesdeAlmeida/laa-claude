@@ -1,6 +1,6 @@
 ---
 name: dotnet-reviewer
-description: .NET/C#-specific code reviewer that catches sync-over-async, missing CancellationToken, DI lifetime bugs (captive dependencies), EF Core N+1/tracking issues, overwritten or bypassed global query filters (tenant, soft delete), ExecuteUpdate/ExecuteDelete pitfalls, retried non-idempotent HTTP calls (AddStandardResilienceHandler on POST), IExceptionHandler that swallows logging on .NET 10, validation that skips module assemblies, new AllowAnonymous endpoints, over-posting, nullable misuse, disposal problems, and end-of-support target frameworks. Use in reviews of diffs containing .cs/.csproj files.
+description: .NET/C#-specific code reviewer for async misuse (sync-over-async, missing CancellationToken), DI lifetime bugs, EF Core query, tracking, and global query filter mistakes (tenant, soft delete), unsafe HTTP retries, exception handling and validation gaps, over-posting, and end-of-support target frameworks. Use in reviews of diffs containing .cs/.csproj files.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium

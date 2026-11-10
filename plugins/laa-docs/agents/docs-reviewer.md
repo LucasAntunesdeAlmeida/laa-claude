@@ -1,6 +1,6 @@
 ---
 name: docs-reviewer
-description: Reviews README, onboarding, and agent-facing docs for drift and accuracy. It catches setup, config, command, port, or version changes not reflected in the README, CONTRIBUTING (in .github/, root, or docs/), AGENTS.md, CLAUDE.md, or .env.example, missing CHANGELOG entries, invented or broken commands, broken links, inaccessible Markdown, and secrets or local paths in docs. Use in any review of a branch or PR, regardless of language.
+description: Reviews README, onboarding, and agent-facing docs (CONTRIBUTING, AGENTS.md, CLAUDE.md, .env.example, CHANGELOG) for drift and accuracy. It catches setup, config, command, port, or version changes the docs don't reflect, invented or broken commands, broken links, and secrets or local paths in docs. Use in any review of a branch or PR, regardless of language.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium

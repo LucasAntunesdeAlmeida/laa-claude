@@ -401,3 +401,82 @@ test('degraded lists each agentType once, even after several fallbacks', async (
   assert.deepEqual(result.degraded, ['laa:investigator'])
   assert.match(result.report, /\*\*▲ Degraded\*\* · laa:investigator unavailable/)
 })
+
+test('review-panel thorough sends three skeptics with different lenses, on fable at xhigh', async () => {
+  const { calls } = await run('review-panel', { base: 'main', thorough: true }, [
+    ['review:correctness', { findings: [{ severity: 'high', file: 'pay/refund.go', line: 7, title: 'Refund skips the ledger', scenario: 's', fix: 'write the ledger row' }] }],
+    ['review:', { findings: [] }],
+    ['verify:', { verdict: 'confirmed', evidence: 'e' }],
+  ])
+  const votes = calls.filter(c => c.opts.label.startsWith('verify:'))
+  assert.equal(votes.length, 3)
+  assert.equal(new Set(votes.map(c => c.prompt)).size, 3)
+  for (const lens of ['code-path', 'reproduction', 'pre-existing']) {
+    assert.equal(votes.filter(c => c.prompt.includes(`through the ${lens}:`)).length, 1, lens)
+  }
+  for (const c of votes) {
+    assert.equal(c.opts.agentType, 'laa:verifier')
+    assert.equal(c.opts.model, 'fable')
+    assert.equal(c.opts.effort, 'xhigh')
+  }
+})
+
+test('review-panel without thorough sends one skeptic on the verifier agent\'s own model', async () => {
+  const { calls } = await run('review-panel', { base: 'main' }, [
+    ['review:correctness', { findings: [{ severity: 'high', file: 'pay/refund.go', line: 7, title: 'Refund skips the ledger', scenario: 's', fix: 'write the ledger row' }] }],
+    ['review:', { findings: [] }],
+    ['verify:', { verdict: 'confirmed', evidence: 'e' }],
+  ])
+  const votes = calls.filter(c => c.opts.label.startsWith('verify:'))
+  assert.equal(votes.length, 1)
+  assert.equal(votes[0].opts.model, undefined)
+  assert.equal(votes[0].opts.effort, undefined)
+  assert.doesNotMatch(votes[0].prompt, /lens/)
+})
+
+test('a fable stage that comes back empty reruns on opus', async () => {
+  const clusters = { clusters: [{ rootCause: 'Stale cache', location: 'cache/order.go:8', mechanism: 'm', howToConfirm: 'disable the cache', supportingAngles: ['data-flow'] }] }
+  const { result, calls, logs } = await run('investigate', { bug: 'b', angles: ['data-flow'] }, [
+    ['investigate:', { hypotheses: [{ rootCause: 'x', location: 'a.go:1', mechanism: 'm', howToConfirm: 'h', confidence: 'high' }] }],
+    ['cluster', (_, opts) => (opts.model === 'fable' ? null : clusters)],
+    ['verify:', { verdict: 'confirmed', evidence: 'e' }],
+  ])
+  assert.deepEqual(calls.filter(c => c.opts.label === 'cluster').map(c => c.opts.model), ['fable', 'opus'])
+  assert.ok(logs.some(m => m === 'cluster: no result on fable; rerunning on opus'))
+  assert.equal(result.hypotheses.length, 1)
+  assert.equal(result.hypotheses[0].status, 'confirmed')
+})
+
+test('a fable stage that throws reruns on opus without marking its agent degraded', async () => {
+  const score = proposal => ({ proposal, fit: 5, simplicity: 5, risk: 5, cost: 5, evolvability: 5, bestIdeas: [], fatalFlaws: [] })
+  const noFable = value => (_, opts) => {
+    if (opts.model === 'fable') throw new Error('model not available')
+    return value
+  }
+  const { result, calls } = await run('design-panel', { requirements: 'a booking service', lenses: ['simplicity', 'scale'] }, [
+    ['architect:', (_, opts) => `proposal ${opts.label}`],
+    ['judge:', noFable({ scores: [score(1), score(2)] })],
+    ['synthesize', noFable('final blueprint')],
+  ])
+  assert.equal(result.blueprint, 'final blueprint')
+  assert.equal(result.judgments.length, 2)
+  assert.deepEqual(result.degraded, [])
+  const synth = calls.filter(c => c.opts.label === 'synthesize')
+  assert.deepEqual(synth.map(c => c.opts.model), ['fable', 'opus'])
+  assert.ok(synth.every(c => c.opts.agentType === 'laa:architect'))
+})
+
+test('investigate thorough verifies on fable at xhigh, and a standard run leaves the verifier as it is', async () => {
+  const outputs = [
+    ['investigate:', { hypotheses: [{ rootCause: 'x', location: 'a.go:1', mechanism: 'm', howToConfirm: 'h', confidence: 'high' }] }],
+    ['cluster', { clusters: [{ rootCause: 'Lost wakeup', location: 'queue/worker.go:52', mechanism: 'm', howToConfirm: 'h', supportingAngles: ['concurrency'] }] }],
+    ['verify:', { verdict: 'confirmed', evidence: 'e' }],
+  ]
+  const votes = async args => (await run('investigate', args, outputs)).calls.filter(c => c.opts.label.startsWith('verify:'))
+  const thorough = await votes({ bug: 'b', angles: ['concurrency'], thorough: true })
+  assert.equal(thorough.length, 3)
+  assert.ok(thorough.every(c => c.opts.model === 'fable' && c.opts.effort === 'xhigh'))
+  const standard = await votes({ bug: 'b', angles: ['concurrency'] })
+  assert.equal(standard.length, 2)
+  assert.ok(standard.every(c => c.opts.model === undefined && c.opts.effort === undefined))
+})

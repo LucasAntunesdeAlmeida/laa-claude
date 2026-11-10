@@ -34,6 +34,17 @@ const fromText = (raw, key) => {
   return text ? { [key]: text } : {}
 }
 
+// A stage pinned to `fable` reruns once on `opus` when it throws or comes back empty: accounts and providers
+// without Fable reject the call, and losing the stage would lose the run. A stage the user skips looks the
+// same from here, so it is rerun too.
+const orOpus = (prompt, opts) => {
+  const rerun = () => {
+    log(`${opts.label}: no result on ${opts.model}; rerunning on opus`)
+    return spawn(prompt, { ...opts, model: 'opus' })
+  }
+  return agent(prompt, opts).then(r => (r == null ? rerun() : r), rerun)
+}
+
 const FINDINGS = {
   type: 'object',
   properties: {
@@ -105,6 +116,16 @@ const classify = (vs, requested) => {
   return { status, confirmed, refuted, uncertain: votes.length - confirmed - refuted, errored: requested - votes.length, votes }
 }
 
+// A thorough review sends three skeptics per finding, each with its own way of attacking the claim. Three
+// identical prompts tend to agree for the same reason, so they settle less than three different checks do.
+// They run on `fable` (see orOpus): thorough is for auth, payments, and migrations, where a wrong verdict costs most.
+const LENSES = [
+  'code-path: read the flagged code, its callers, and the framework behavior it relies on',
+  'reproduction: run or write a check that would fail if the issue were real',
+  'pre-existing: compare with the base version, and look for a guard elsewhere that already prevents it',
+]
+const verify = input.thorough ? orOpus : spawn
+
 // Dedupe within a dimension only: nearby lines from the same reviewer are one finding. Two dimensions
 // flagging the same spot usually report different issues (a missing tenant check next to a nil path), so both stay.
 const key = f => `${f.dimension}:${f.file}:${Math.round(f.line / 5)}`
@@ -117,12 +138,13 @@ const results = await pipeline(DIMENSIONS,
     .then(r => (r ? r.findings : []).map(f => ({ ...f, dimension: d.key }))),
   findings => {
     const fresh = findings.filter(f => !seen.has(key(f)) && (seen.add(key(f)), true))
-    const votesPer = input.thorough ? 3 : 1
+    const votesPer = input.thorough ? LENSES.length : 1
     return parallel(fresh.map(f => () =>
       parallel(Array.from({ length: votesPer }, (_, v) => () =>
-        spawn(`${scope}\n\nCLAIMED ISSUE (${f.severity}) at ${f.file}:${f.line}: ${f.title}\nSCENARIO: ${f.scenario}\n\n` +
-          'Try to REFUTE it. An issue that already existed before this diff, and that the diff does not make worse, counts as refuted.',
-          { label: `verify:${f.file.split('/').pop()}:${f.line}${votesPer > 1 ? `#${v + 1}` : ''}`, phase: 'Verify', agentType: 'laa:verifier', ...(input.thorough && { effort: 'xhigh' }), schema: VERDICT })))
+        verify(`${scope}\n\nCLAIMED ISSUE (${f.severity}) at ${f.file}:${f.line}: ${f.title}\nSCENARIO: ${f.scenario}\n\n` +
+          `Try to REFUTE it${input.thorough ? ` through the ${LENSES[v]} lens` : ''}. ` +
+          'An issue that already existed before this diff, and that the diff does not make worse, counts as refuted.',
+          { label: `verify:${f.file.split('/').pop()}:${f.line}${votesPer > 1 ? `#${v + 1}` : ''}`, phase: 'Verify', agentType: 'laa:verifier', ...(input.thorough && { model: 'fable', effort: 'xhigh' }), schema: VERDICT })))
         .then(vs => ({ ...f, ...classify(vs, votesPer) }))))
   })
 

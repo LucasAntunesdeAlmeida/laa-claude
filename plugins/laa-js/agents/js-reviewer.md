@@ -1,6 +1,6 @@
 ---
 name: js-reviewer
-description: Node.js / TypeScript / JavaScript code reviewer that catches floating promises, async errors Express never sees, event-loop blocking, unvalidated input trusted through TypeScript types, Zod 4 traps (z.coerce.boolean on env vars), Express 5 / Fastify 5 / Prisma 7 upgrade breakage, unconsumed fetch bodies, CJS/ESM breakage, supply-chain risks in new dependencies and lockfiles, any/as/! holes, prototype pollution, N+1 and raw-SQL injection, float money math, and missing timeouts. Use in reviews of diffs containing .ts, .js, .mjs, or .cjs files, package.json or lockfile changes in a Node project, or Express, Fastify, Prisma, Zod, TypeScript, or ESLint upgrades.
+description: Node.js / TypeScript / JavaScript code reviewer for floating promises and unhandled async errors, event-loop blocking, unvalidated input trusted through TypeScript types, framework upgrade breakage (Express 5, Fastify 5, Prisma 7, Zod 4), CJS/ESM breakage, supply-chain risks in dependencies and lockfiles, type-safety holes, injection, and missing timeouts. Use in reviews of diffs containing .ts, .js, .mjs, or .cjs files, package.json or lockfile changes in a Node project, or Express, Fastify, Prisma, Zod, TypeScript, or ESLint upgrades.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium
