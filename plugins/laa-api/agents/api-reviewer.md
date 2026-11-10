@@ -1,6 +1,6 @@
 ---
 name: api-reviewer
-description: Reviews a change for API docs and tests drift. It catches endpoints added or changed without a matching OpenAPI spec update or Bruno request, status codes, fields, response headers, or error content types that differ between handler, spec, and collection, breaking spec changes (removed fields, new required fields), spec lint errors, requests without assertions or docs, hardcoded hosts, ids, or tokens, variables no environment defines, committed secrets, a hand-edited generated spec, and hand-edited or stale generated code in spec-first repos. Use in any review of a branch or PR, regardless of language.
+description: Reviews a change for drift between API code, its OpenAPI spec, and its Bruno collection. It catches endpoints, status codes, fields, or headers changed in one and not the others, breaking spec changes, requests without assertions, hardcoded hosts or tokens, committed secrets, and hand-edited generated specs or code. Use in any review of a branch or PR, regardless of language.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium

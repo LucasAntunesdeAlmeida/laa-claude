@@ -1,6 +1,6 @@
 {
   "name": "laa-godot",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Godot 4 / GDScript stack pack for the laa toolkit: GDScript and engine conventions, game-dev process practices, and a Godot-specific reviewer.",
   "author": {
     "name": "Lucas Almeida"

@@ -1,6 +1,6 @@
 ---
 name: go-reviewer
-description: Go-specific code reviewer that catches goroutine leaks, context misuse (request-scoped ctx in background work, errgroup ctx), WaitGroup misuse, error wrapping and errors.As mistakes, nil-interface traps, data races, defer-in-loop, slice aliasing, path traversal, IPv6-unsafe dial addresses, and non-idiomatic APIs, judged against the module's go.mod go line. Use in reviews of diffs containing .go files or go.mod changes.
+description: Go-specific code reviewer for goroutine leaks, context and WaitGroup misuse, error wrapping mistakes, nil-interface traps, data races, slice aliasing, path traversal, and non-idiomatic APIs, judged against the module's go.mod go line. Use in reviews of diffs containing .go files or go.mod changes.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium

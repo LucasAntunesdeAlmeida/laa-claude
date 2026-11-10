@@ -1,6 +1,6 @@
 ---
 name: docker-reviewer
-description: Reviews a change for local-environment drift. It catches new service dependencies (database, queue, cache, object store) with no compose service, unpinned or `latest` images, service versions that differ between compose, CI, Testcontainers, and deployment, compose services without healthchecks or depended on through short-form `depends_on`, fixed `container_name`s that break parallel stacks, wrong Postgres data mounts after a major bump, Testcontainers tests with fixed ports, hard-coded localhost, or sleeps, and docs or scripts that tell people to install services on the host. Use in any review of a branch or PR, regardless of language.
+description: Reviews a change for local-environment drift. It catches service dependencies with no compose service, unpinned images, versions that differ between compose, CI, Testcontainers, and deployment, missing healthchecks, fixed container names or ports, and docs that tell people to install services on the host. Use in any review of a branch or PR, regardless of language.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium

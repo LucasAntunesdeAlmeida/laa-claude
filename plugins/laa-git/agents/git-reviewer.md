@@ -1,6 +1,6 @@
 ---
 name: git-reviewer
-description: Reviews a branch's git history and PR hygiene, catching non-conventional or misleading commit messages, unmarked breaking changes, mixed or WIP commits, committed secrets, PR titles missing `!` for a breaking commit, shell scripts committed with CRLF, local or generated files, AI attribution lines, bad branch names, and work committed on the default branch. Use in any review of a branch or PR, regardless of language.
+description: Reviews a branch's git history and PR hygiene. It catches non-conventional or misleading commit messages, unmarked breaking changes, mixed or WIP commits, committed secrets and local files, AI attribution lines, bad branch names, and work committed on the default branch. Use in any review of a branch or PR, regardless of language.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium

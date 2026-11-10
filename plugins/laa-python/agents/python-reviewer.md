@@ -1,6 +1,6 @@
 ---
 name: python-reviewer
-description: Python-specific code reviewer that catches blocking calls in async code, swallowed asyncio cancellation, gather() without structured concurrency, unawaited coroutines, lost task references, mutable default arguments, swallowed exceptions, Pydantic v1 idioms in v2 code, SQLAlchemy session sharing and N+1 misuse, missing validation, unsafe deserialization, naive datetimes, and typing holes. Use in reviews of diffs containing .py files.
+description: Python-specific code reviewer for async mistakes (blocking calls, swallowed cancellation, unawaited coroutines, lost tasks), mutable defaults, swallowed exceptions, Pydantic v1 idioms in v2 code, SQLAlchemy session and N+1 misuse, missing validation, unsafe deserialization, naive datetimes, and typing holes. Use in reviews of diffs containing .py files.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 effort: medium
