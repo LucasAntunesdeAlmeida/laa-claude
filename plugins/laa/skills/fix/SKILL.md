@@ -12,10 +12,14 @@ Bug: $ARGUMENTS
 Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 0–7), ask every ★ gate as a gate card, and end with the closing report and **Next**. Keep the run's journal there too, at each gate and at the end.
 
 ## Running the workflows
-Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:
-1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
-2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type` and its `model` values as `model`, reuse its prompts, and set `isolation: "worktree"` where the script does.
-3. Name the mode in the mode line (`workflow mode` or `agent mode`).
+Steps that call a workflow use the **Workflow** tool. A workflow counts votes, merges duplicates, and orders the judges in code, so prefer it. Two things can keep you from calling it:
+- **Its opt-in rules don't allow it**, because the user described the task instead of typing this command. Ask once per run, as soon as you know the run will fan out (after the size triage, when the skill has one), as a gate card: `★ Run the fan-out as a workflow?`, with one line on what would run and roughly how many agents. The options are **Workflow** (recommended; this answer is the user's opt-in for every workflow step of the run), **Agents** (you run the same fan-out yourself), and **Stop**. Don't ask when the run skips the fan-out.
+- **The tool isn't available**, or the user chose **Agents**. Run the same fan-out yourself:
+  1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
+  2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type`, pass its `model` and `effort` values as `model` and `effort`, reuse its prompts, and set `isolation: "worktree"` where the script does. A stage the script runs through `orOpus` goes on `fable` first, then on `opus` if that fails.
+  3. Apply the script's own rules to the results: how it counts verifier votes, merges duplicates, and ranks.
+
+Name the mode in the mode line (`workflow mode` or `agent mode`). When you had to ask, leave it out of the mode line and say it in one line right after the answer.
 
 ## Git: branch or worktree first
 In a git repository, don't change files on the default branch (`main`/`master`, or whatever `origin/HEAD` points to). Before the first file change (the reproduction test counts):
