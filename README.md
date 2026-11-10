@@ -29,7 +29,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 - On Windows, Git Bash: the hooks and scripts are POSIX `sh`.
 - Optional:
   - the Workflow tool, for the fan-out workflows. Without it, the skills run the same agents through the Agent tool.
-  - Claude Code 2.1.287 or later, for `laa-mods`. Mods (function hooks) are on by default from that version.
+  - Claude Code 2.1.299 or later, for `laa-mods`. Mods (function hooks) are on by default from 2.1.287, and `/laa-help` and the panes use `Text` props that 2.1.299 added; an older build doesn't draw them.
   - [graphify](#code-intelligence-graphify), for code-graph exploration.
 
 ## Install
@@ -40,7 +40,7 @@ In Claude Code:
 /plugin install laa@laa
 /plugin install laa-go@laa        # and/or laa-dotnet@laa, laa-python@laa, laa-js@laa, laa-godot@laa
 /plugin install laa-git@laa       # and/or laa-docs@laa, laa-docker@laa, laa-api@laa
-/plugin install laa-mods@laa      # optional: mods need Claude Code 2.1.287 or later
+/plugin install laa-mods@laa      # optional: needs Claude Code 2.1.299 or later
 ```
 Then run `/laa:adopt` in a repo to map it and set it up.
 

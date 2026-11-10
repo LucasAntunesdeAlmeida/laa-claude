@@ -39,7 +39,9 @@ describe('/laa-help', () => {
       component: 'CommandOutput',
       props: { command: 'laa-help', args: '', text: String(out.text), isErrored: false },
     })
-    expect(await ui.find({ type: 'Text', text: 'Change' })).toBeDefined()
+    const heading = JSON.stringify(await ui.find({ type: 'Text', text: 'Change' }))
+    // `bold` is deprecated on a mod's Text in favor of `weight`. (On some surfaces the engine adds `bold: true` next to it, so only `weight` is checked.)
+    expect(heading).toContain('"weight":"semibold"')
     expect(await ui.find({ type: 'Text', text: /\/laa:review \[ref\] \[--fix\]/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '/laa:adopt' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '  there is no project map yet' })).toBeDefined()

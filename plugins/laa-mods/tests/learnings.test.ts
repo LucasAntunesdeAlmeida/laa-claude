@@ -75,7 +75,8 @@ describe('learnings pane', () => {
     expect(String(out.text)).toContain(`2 open learnings in ${ROOT}`)
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await $.ui.mount({ ...PANE, surface })
-      expect(await ui.find({ type: 'Text', text: 'wrong test command' })).toBeDefined()
+      const title = JSON.stringify(await ui.find({ type: 'Text', text: 'wrong test command' }))
+      expect(title).toContain('"weight":"semibold"')
       expect(await ui.find({ type: 'Text', text: 'old rule' })).toBeUndefined()
       expect(await ui.find({ type: 'Button', key: 'evolve' })).toBeDefined()
       await ui.unmount()

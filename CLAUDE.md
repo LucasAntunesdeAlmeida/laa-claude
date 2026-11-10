@@ -23,6 +23,7 @@ This repo is a Claude Code plugin marketplace (`.claude-plugin/marketplace.json`
   - Keep these sections consistent across skills.
 - **Hooks and scripts** are POSIX `sh`. They run under Git Bash on Windows.
   - The exception is `laa-mods`: TypeScript function hooks (mods). Nothing else may depend on it, because mods don't load everywhere (Claude Code before 2.1.287, Desktop WSL sessions) and draw nothing in `claude -p`, the Agent SDK, or cloud sessions; core's `sh` hooks must keep working without it.
+  - Style a mod's `Text` with `weight`, not the deprecated `bold`. A tree that sets `weight` doesn't draw before Claude Code 2.1.299, which is the oldest release `laa-mods` supports.
   - In a mod, every function that takes `$` is declared at the top of the hooks module (`register.tsx`), since `claude plugin validate` only follows `$` there. Pure helpers can live in other files.
   - Mod behavior changes need a `*.test.ts` case under `plugins/laa-mods/tests/` (run with `claude plugin test`) instead of an eval case, plus the version bump.
   - A guard change that refuses less (a parser that drops text as "not commands") leaves the input as it is whenever it can't be certain. It needs tests of inputs `main` refused that must stay refused. Review it by running the old and new parser over the same inputs.

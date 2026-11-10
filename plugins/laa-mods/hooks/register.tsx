@@ -721,7 +721,7 @@ export const register: Register = (on, options) => {
         <Text dimColor>{header}</Text>
         {HELP.map(g => (
           <Box key={g.group} flexDirection="column" marginTop={1}>
-            <Text bold>{g.group}</Text>
+            <Text weight="semibold">{g.group}</Text>
             {g.items.map(([command, what]) => (
               <Box key={command}>
                 <Text color={C.action}>{`  ${command.padEnd(width)}`}</Text>
@@ -736,7 +736,7 @@ export const register: Register = (on, options) => {
         </Box>
         {suggested && (
           <Box key="suggested" marginTop={1}>
-            <Text bold>Suggested </Text>
+            <Text weight="semibold">Suggested </Text>
             <Text color={C.action}>{suggested[1]}</Text>
             <Text dimColor>{`  ${suggested[2]}`}</Text>
           </Box>
@@ -755,7 +755,7 @@ export const register: Register = (on, options) => {
         {list.entries.length === 0 && <Text>No open learnings. Nothing to evolve.</Text>}
         {list.entries.map(entry => (
           <Box key={`entry${entry.index}`} flexDirection="column" marginTop={1}>
-            <Text bold>{entry.title}</Text>
+            <Text weight="semibold">{entry.title}</Text>
             <Text dimColor>{entry.scope} · {entry.kind} · {entry.target}</Text>
             <Text>{entry.signal}</Text>
             <Text color={C.action}>→ {entry.proposal}</Text>
@@ -783,7 +783,7 @@ export const register: Register = (on, options) => {
         {list.entries.map(f => (
           <Box key={`finding${f.index}`} flexDirection="column" marginTop={1}>
             <Box>
-              <Text bold {...tagColor(f.tag)}>{f.tag.padEnd(4)}</Text>
+              <Text weight="semibold" {...tagColor(f.tag)}>{f.tag.padEnd(4)}</Text>
               <Text dimColor>{`  ${f.location}`}</Text>
             </Box>
             <Text>{f.title}</Text>
