@@ -12,14 +12,17 @@ This repo is a Claude Code plugin marketplace (`.claude-plugin/marketplace.json`
   - No `Date.now()`, `Math.random()`, or Node APIs.
   - Reference plugin agents as `agentType: 'laa:<agent>'` through the `spawn()` fallback helper at the top of each file.
   - An `agent()` call without an `agentType` sets `model` and `effort` itself (and the phase entry in `meta` gets the `model`).
+  - A call whose one answer steers the rest of the run (clustering, judging, synthesis), and the verifiers of a `thorough` run, pin `model: 'fable'` and go through the `orOpus()` helper, which reruns the call on `opus` where Fable isn't available. Everything else stays on the agent's own pin.
+  - `spawn()`, `render()`, `fromText()`, and `orOpus()` are copied into each workflow that uses them, since workflows can't import. CI checks the copies match.
   - Default to `pipeline()`. Use a barrier only when a stage needs every result, and say why in a comment.
   - Accept both an args object (from skills) and plain text (typed as `/laa:<workflow> <text>`) through the `fromText()` helper.
 - **Skills** name workflows by their namespaced name (`laa:investigate`) and must keep the ★ approval gates.
-  - Every skill that calls a workflow keeps the "Running the workflows" section: the Agent-tool fallback for when the Workflow tool can't be used.
+  - Every skill that calls a workflow keeps the "Running the workflows" section: the ★ question that gets the user's opt-in when they described the task instead of typing the command, and the Agent-tool fallback for when the Workflow tool can't be used. The fallback carries the script's `model` and `effort` along with its `agentType`.
+  - A skill that must not change files says so in frontmatter too (`disallowed-tools: Edit, Write, NotebookEdit`, as `/laa:explore` does), so the harness enforces it and not only the prompt.
   - Every skill that changes files keeps its "Git" section: a task branch, or a worktree when the checkout has unrelated uncommitted changes, and never the default branch.
   - Keep these sections consistent across skills.
 - **Hooks and scripts** are POSIX `sh`. They run under Git Bash on Windows.
-  - The exception is `laa-mods`: TypeScript function hooks (mods). Nothing else may depend on it, because not every Claude Code build loads mods; core's `sh` hooks must keep working without it.
+  - The exception is `laa-mods`: TypeScript function hooks (mods). Nothing else may depend on it, because mods don't load everywhere (Claude Code before 2.1.287, Desktop WSL sessions) and draw nothing in `claude -p`, the Agent SDK, or cloud sessions; core's `sh` hooks must keep working without it.
   - In a mod, every function that takes `$` is declared at the top of the hooks module (`register.tsx`), since `claude plugin validate` only follows `$` there. Pure helpers can live in other files.
   - Mod behavior changes need a `*.test.ts` case under `plugins/laa-mods/tests/` (run with `claude plugin test`) instead of an eval case, plus the version bump.
   - A guard change that refuses less (a parser that drops text as "not commands") leaves the input as it is whenever it can't be certain. It needs tests of inputs `main` refused that must stay refused. Review it by running the old and new parser over the same inputs.
@@ -41,6 +44,7 @@ claude plugin validate .                     # marketplace
 claude plugin validate ./plugins/<plugin>    # each plugin
 claude --plugin-dir ./plugins/laa            # try it live
 claude plugin eval ./plugins/laa --runs 1 --no-publish
+node --test "plugins/laa/tests/*.test.mjs"   # workflow scripts
 claude plugin test ./plugins/laa-mods        # mod tests
 npx -p typescript tsc -p plugins/laa-mods    # mod types; load it once with --plugin-dir first
 ```
