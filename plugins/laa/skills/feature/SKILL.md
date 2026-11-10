@@ -12,10 +12,14 @@ Feature: $ARGUMENTS
 Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 0–8), ask every ★ gate as a gate card, and end with the closing report and **Next**. Keep the run's journal there too, at each gate and at the end.
 
 ## Running the workflows
-Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:
-1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
-2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type` and its `model` values as `model`, reuse its prompts, and set `isolation: "worktree"` where the script does.
-3. Name the mode in the mode line (`workflow mode` or `agent mode`).
+Steps that call a workflow use the **Workflow** tool. A workflow counts votes, merges duplicates, and orders the judges in code, so prefer it. Two things can keep you from calling it:
+- **Its opt-in rules don't allow it**, because the user described the task instead of typing this command. Ask once per run, as soon as you know the run will fan out (after the size triage, when the skill has one), as a gate card: `★ Run the fan-out as a workflow?`, with one line on what would run and roughly how many agents. The options are **Workflow** (recommended; this answer is the user's opt-in for every workflow step of the run), **Agents** (you run the same fan-out yourself), and **Stop**. Don't ask when the run skips the fan-out.
+- **The tool isn't available**, or the user chose **Agents**. Run the same fan-out yourself:
+  1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
+  2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type`, pass its `model` and `effort` values as `model` and `effort`, reuse its prompts, and set `isolation: "worktree"` where the script does. A stage the script runs through `orOpus` goes on `fable` first, then on `opus` if that fails.
+  3. Apply the script's own rules to the results: how it counts verifier votes, merges duplicates, and ranks.
+
+Name the mode in the mode line (`workflow mode` or `agent mode`). When you had to ask, leave it out of the mode line and say it in one line right after the answer.
 
 ## Git: branch or worktree first
 In a git repository, don't change files on the default branch (`main`/`master`, or whatever `origin/HEAD` points to). Before the first file change:
@@ -37,6 +41,8 @@ Put the size in the mode line, and say why in one line.
 ## 2. Explore
 Launch 2–3 `laa:explorer` agents **in parallel** (one message, several Agent calls), each on a different area this feature touches, such as the entry points, the domain/data layer, and a similar existing feature to copy. Then read the key files they list.
 
+When the feature encodes an external tool's, library's, or service's behavior (CLI flags, config keys, defaults, file formats, current versions), launch a `general-purpose` research agent in the same message. It checks the official docs, the changelog, or the published package, and returns the facts the feature depends on, each with its source. Facts from memory go stale, so build and review against this list.
+
 ## 3. Clarify
 Using **AskUserQuestion**, ask only what the code and request can't answer: behavior at edge cases, scope boundaries, backward compatibility, and permissions/tenancy. Offer concrete options with a recommendation. Wait for answers.
 
@@ -44,11 +50,12 @@ Using **AskUserQuestion**, ask only what the code and request can't answer: beha
 Call the **Workflow** tool with `name: "laa:design-panel"` and
 `args: { requirements: <feature + answers + acceptance criteria>, context: <project-map excerpt + explorer findings> }`.
 For a feature inside an existing system, pass lenses that fit, for example `["minimal change following existing patterns", "cleanest long-term design", "safest rollout (flags, backward compat)"]`.
-Present the blueprint, the ranking, and the deep-dives (data model, API, threat model, scale risks, infra) concisely. Record significant decisions as ADRs in `docs/adr/` (or the repo's existing ADR location).
+Present the blueprint, the ranking, and the deep-dives (data model, API, threat model, scale risks, infra) concisely. Record significant decisions as ADRs in `docs/adr/` (or the repo's existing ADR location, following its format). A new ADR uses the MADR shape: a `status` (Proposed, Accepted, Deprecated, or Superseded by ADR-NNNN), the date, context, options, decision, and consequences. It starts as Proposed and becomes Accepted when the plan gate approves. When it replaces an earlier ADR, link to it, and set the old one to `Superseded by ADR-NNNN` with a link back.
 
 ## 5. Plan slices
 Turn the blueprint's build sequence into work items: `{ id, title, spec, files, acceptance }`.
 - Items that run in parallel **must not touch the same files or change a shared contract**. Put shared foundations (schema migration, shared types, contracts) in a first sequential slice.
+- For every stubbed or shared contract, the spec states its semantics: what it returns once real, and when a counter, event, or flag changes. Parallel items code and test against that, not against the stub.
 - Show the plan (a numbered list, marking which run in parallel). ★ **Gate: user approves the plan**, as a gate card, before any code is written.
 
 ## 6. Implement
@@ -58,7 +65,11 @@ Turn the blueprint's build sequence into work items: `{ id, title, spec, files, 
 4. Remove the worktrees and branches once merged (`git worktree remove`, `git branch -d`).
 
 ## 7. Review
-Call the **Workflow** tool with `name: "laa:review-panel"` and `args: { base: <branch point>, requirements: <acceptance criteria>, extraReviewers: <installed stack and practice reviewers, picked as in /laa:review step 2, e.g. ["laa-go:go-reviewer", "laa-git:git-reviewer"]> }`. Fix confirmed findings and commit.
+Call the **Workflow** tool with `name: "laa:review-panel"` and `args: { base: <branch point>, requirements: <acceptance criteria, plus the focus below>, extraReviewers: <installed stack and practice reviewers, picked as in /laa:review step 2, e.g. ["laa-go:go-reviewer", "laa-git:git-reviewer"]> }`.
+- The per-slice reviews in step 6 already covered each slice's own files. In `requirements`, list which files they covered, and point the panel at what they couldn't see: the wiring shared across slices, the interactions between slices, and the acceptance criteria that span slices.
+- When step 2 produced verified facts about an external tool, add them, so the reviewers check the change against them. A small feature's single reviewer gets them in its prompt.
+
+Fix confirmed findings and commit.
 
 ## 8. Close the loop
 Run the `laa:retro` skill. Then end with the closing report: what shipped, the decisions made, the feature branch, follow-ups, and the learnings the retro logged. In **Next**, offer to open a PR.

@@ -83,7 +83,7 @@ async function world($: Engine, on: On, f: Fake = {}) {
   const seen = fakeRepo(on, { branch: BRANCH, mapAge: 1, ...f })
   on('ui.render', ($, e) => $.ui.resolve(e).Box({ key: 'engine' }))
   on('skill.prompt', ($, e) => ({ text: e.text }))
-  await $.tool.call(bash('git status'))
+  await $.tool.call(bash('git switch -'))
   return seen
 }
 
@@ -306,7 +306,7 @@ describe('stepper row', () => {
         const step = `${table.first + i}/${lastOf(table)}`
         for (const gate of [null, 'Go on?']) {
           seen.setFile(JOURNAL, journal(name, `${step} · ${def.title}`, gate))
-          await $.tool.call(bash('git status'))
+          await $.tool.call(bash('git switch -'))
           const glyph = gate ? '★' : '○'
           const drawn = await expectStepper(
             $, pausedRow(name, ` ▸ ${step} ${def.title}`), fullRow(name, table.first + i, glyph), `${glyph} ${def.label}`, `paused laa:${name} ${step} ${glyph}`,

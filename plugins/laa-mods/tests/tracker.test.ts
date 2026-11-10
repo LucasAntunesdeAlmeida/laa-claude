@@ -25,7 +25,7 @@ async function world($: { tool: { call: (i: ReturnType<typeof bash>) => Promise<
   on('skill.prompt', ($, e) => ({ text: e.text }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('session.end', ($, e) => ({ sessionId: e.sessionId }))
-  await $.tool.call(bash('git status'))
+  await $.tool.call(bash('git switch -'))
   return footers
 }
 
@@ -130,6 +130,23 @@ describe('pipeline tracker', () => {
       await band.unmount()
     })
   }
+
+  test("names the engine of a workflow run from a script file by the result's workflow name", async ($, on) => {
+    await world($, on)
+    await $.skill.prompt(skill('adopt'))
+    await $.tool.call({ tool: 'Workflow', scriptPath: 'C:/r/.claude/scratch/map-repo.js' })
+    const band = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    expect(await band.find({ type: 'Text', text: ' · engine map-repo' })).toBeDefined()
+    await band.unmount()
+  })
+
+  test('arms the band from the mode line alone, where skill.prompt hooks do not run', async ($, on) => {
+    const footers = await world($, on)
+    await $.session.append(reply('**laa:migrate** · standard · workflow mode\n\n**▸ 2/7 · Pilot**'))
+    const footer = await $.ui.mount({ ...FOOTER, surface: 'terminal' })
+    expect(footers[footers.length - 1]).toEqual(['auto-accept', 'laa:migrate 2/7'])
+    await footer.unmount()
+  })
 
   test('keeps the run through a workflow report or a stray Next, and a step line brings a dropped pipeline back', async ($, on) => {
     const footers = await world($, on)

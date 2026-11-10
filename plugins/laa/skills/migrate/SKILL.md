@@ -12,10 +12,14 @@ Change: $ARGUMENTS
 Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 0–7), ask every ★ gate as a gate card, and end with the closing report and **Next**. Keep the run's journal there too, at each gate and at the end.
 
 ## Running the workflows
-Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:
-1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
-2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type` and its `model` values as `model`, reuse its prompts, and set `isolation: "worktree"` where the script does.
-3. Name the mode in the mode line (`workflow mode` or `agent mode`).
+Steps that call a workflow use the **Workflow** tool. A workflow counts votes, merges duplicates, and orders the judges in code, so prefer it. Two things can keep you from calling it:
+- **Its opt-in rules don't allow it**, because the user described the task instead of typing this command. Ask once per run, as soon as you know the run will fan out (after the size triage, when the skill has one), as a gate card: `★ Run the fan-out as a workflow?`, with one line on what would run and roughly how many agents. The options are **Workflow** (recommended; this answer is the user's opt-in for every workflow step of the run), **Agents** (you run the same fan-out yourself), and **Stop**. Don't ask when the run skips the fan-out.
+- **The tool isn't available**, or the user chose **Agents**. Run the same fan-out yourself:
+  1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
+  2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type`, pass its `model` and `effort` values as `model` and `effort`, reuse its prompts, and set `isolation: "worktree"` where the script does. A stage the script runs through `orOpus` goes on `fable` first, then on `opus` if that fails.
+  3. Apply the script's own rules to the results: how it counts verifier votes, merges duplicates, and ranks.
+
+Name the mode in the mode line (`workflow mode` or `agent mode`). When you had to ask, leave it out of the mode line and say it in one line right after the answer.
 
 ## Git: branch or worktree first
 In a git repository, don't change files on the default branch (`main`/`master`, or whatever `origin/HEAD` points to). Before the first file change (the pilot counts):
@@ -35,7 +39,10 @@ Estimate the number of sites (`grep -rl` for the old pattern, or the build error
 - **More**: go through every step.
 
 ## 2. Pilot
-On the migration branch, migrate ONE representative site (or one small package) by hand. Build and test it. From it, write the **recipe**:
+First look for a deterministic tool that makes the change: a codemod or the toolchain's own fixer, such as `go fix`, `gofmt -r '<before> -> <after>'`, `dotnet format`, `ruff check --fix`, a ts-morph or jscodeshift script, or an OpenRewrite recipe. When one exists, it is the recipe: run it on the pilot, and later on every site, in one pass. Agents handle only the leftovers it can't rewrite, and steps 3–4 run on those.
+
+On the migration branch, migrate ONE representative site (or one small package), with the tool or by hand. Build and test it. From it, write the **recipe**:
+- the tool and its exact command, when there is one
 - the before → after pattern, with the pilot as a worked example (`path:line`)
 - rules for the edge cases seen so far
 - the verify commands (build, plus which tests)
@@ -52,6 +59,7 @@ Then build and type-check. The sites are the resulting compile errors, type erro
 Commit the pilot. ★ **Gate: user approves the recipe.**
 
 ## 3. Find the sites and plan batches
+If the recipe has a tool, run it over the whole repo on the migration branch first, build, test, and commit. Then look only for what it left.
 Call the **Workflow** tool with `name: "laa:migrate-sites"` and `args: { change, recipe, verify, discoverOnly: true }`. Show the site count and the batch plan (batch id → files). ★ **Gate: user approves the plan.** They may drop or reorder batches.
 
 ## 4. Transform

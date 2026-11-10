@@ -5,7 +5,7 @@ import type { On } from 'claude-code'
 import { decodeCells, paletteOf } from '../hooks/draw'
 import {
   ALL_SURFACES, asked, BAND, BAND_SURFACES, bash, commandRun, fakeRepo, FOOTER, golden, HINT, notification, PANE, reply, show, skill,
-  SPINNER, spawnWf, TURN, turnEnd, typed, WF, WF_LAUNCHED, wfCall,
+  SPINNER, spawnWf, styleOf, TURN, turnEnd, typed, WF, WF_LAUNCHED, wfCall,
 } from './fake'
 import type { Drawn, Fake } from './fake'
 
@@ -37,7 +37,7 @@ async function world($: Engine, on: On, f: Fake = {}) {
   on('skill.prompt', ($, e) => ({ text: e.text }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('agent.spawn', () => ({ model: 'claude-test', agentId: 'agent_test1' }))
-  await $.tool.call(bash('git status'))
+  await $.tool.call(bash('git switch -'))
   return { clock, handed }
 }
 
@@ -440,7 +440,7 @@ describe('one red item across every place', () => {
       expect(reds(s.band), surface).toBe(0)
       const frame = keyed(s.newest, 'frame')
       expect(frame?.props?.borderColor, surface).toBe('error')
-      expect((frame?.children?.[0] as Node).props, surface).toEqual({ bold: true, color: 'error' })
+      expect(styleOf((frame?.children?.[0] as Node).props ?? {}), surface).toEqual({ color: 'error', weight: 'semibold' })
       expect(reds(s.newest), surface).toBe(2)
       expect(keyed(s.older, 'frame')?.props?.borderColor, surface).toBe('warning')
       expect(reds(s.older), surface).toBe(0)
@@ -448,7 +448,7 @@ describe('one red item across every place', () => {
       expect(reds(s.card), surface).toBe(0)
       // The pane's CRIT and HIGH tags, red in 0.3.0, are warning here.
       expect(reds(s.pane), surface).toBe(0)
-      expect(show(s.pane), surface).toContain('<Text bold color="warning">"CRIT  "</Text>')
+      expect(show(s.pane), surface).toContain('<Text color="warning" weight="semibold">"CRIT  "</Text>')
     }
   })
 })

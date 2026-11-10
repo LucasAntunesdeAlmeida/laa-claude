@@ -12,10 +12,22 @@ Target: $ARGUMENTS
 Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 1–4), ask every ★ gate as a gate card, and end with the closing report and **Next**.
 
 ## Running the workflows
-Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:
-1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
-2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type` and its `model` values as `model`, reuse its prompts, and set `isolation: "worktree"` where the script does.
-3. Name the mode in the mode line (`workflow mode` or `agent mode`).
+Steps that call a workflow use the **Workflow** tool. A workflow counts votes, merges duplicates, and orders the judges in code, so prefer it. Two things can keep you from calling it:
+- **Its opt-in rules don't allow it**, because the user described the task instead of typing this command. Ask once per run, as soon as you know the run will fan out (after the size triage, when the skill has one), as a gate card: `★ Run the fan-out as a workflow?`, with one line on what would run and roughly how many agents. The options are **Workflow** (recommended; this answer is the user's opt-in for every workflow step of the run), **Agents** (you run the same fan-out yourself), and **Stop**. Don't ask when the run skips the fan-out.
+- **The tool isn't available**, or the user chose **Agents**. Run the same fan-out yourself:
+  1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
+  2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type`, pass its `model` and `effort` values as `model` and `effort`, reuse its prompts, and set `isolation: "worktree"` where the script does. A stage the script runs through `orOpus` goes on `fable` first, then on `opus` if that fails.
+  3. Apply the script's own rules to the results: how it counts verifier votes, merges duplicates, and ranks.
+
+Name the mode in the mode line (`workflow mode` or `agent mode`). When you had to ask, leave it out of the mode line and say it in one line right after the answer.
+
+## Git: branch or worktree first
+A review only reads code. `.claude/laa/local/last-review.md` is local state, fine on any branch. Only `--fix` changes tracked files, so before its first fix:
+- **Reviewing a branch other than the default**: apply the fixes on that branch.
+- **On the default branch** (reviewing uncommitted changes there): create a branch first, `git switch -c fix/review-<short-slug>`.
+- **Uncommitted changes unrelated to the review**: don't switch branches under them. Work in a new git worktree instead (the EnterWorktree tool, or `git worktree add ../<repo>-<slug> -b fix/review-<slug>`).
+
+Commit only on the work branch. Don't merge into the default branch, push, or open a PR unless the user asks.
 
 ## 1. Resolve the target
 - **PR number**: `gh pr view <n> --json baseRefName,headRefName,title,body`. Use the PR body as requirements.
@@ -28,11 +40,12 @@ If the code under review isn't checked out:
 
 ## 2. Pick extra reviewers
 The panel always runs the core dimensions: correctness, completeness, security, and performance. This step only adds to them. When you list the panel, name both.
-- Stack reviewers for the installed stack packs that match the diff's files:
-  - `.go` → `laa-go:go-reviewer`
-  - `.cs`, `.csproj` → `laa-dotnet:dotnet-reviewer`
-  - `.py` → `laa-python:python-reviewer`
-  - `.ts`, `.js`, `.mjs`, `.cjs` → `laa-js:js-reviewer`
+- Stack reviewers for the installed stack packs that match the diff's files. Build, dependency, and toolchain files count as much as source files:
+  - `.go`, `go.mod`, `go.sum`, `go.work`, `.golangci.yml`/`.golangci.yaml` → `laa-go:go-reviewer`
+  - `.cs`, `.csproj`, `.sln`, `.slnx`, `Directory.Build.props`, `Directory.Build.targets`, `Directory.Packages.props`, `global.json` → `laa-dotnet:dotnet-reviewer`
+  - `.py`, `pyproject.toml`, `uv.lock`, `requirements*.txt` → `laa-python:python-reviewer`
+  - `.ts`, `.tsx`, `.js`, `.mjs`, `.cjs`, `package.json`, lockfiles (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`), `tsconfig*.json`, ESLint or Biome config (`eslint.config.*`, `.eslintrc*`, `biome.json`) → `laa-js:js-reviewer`
+  - `.gd`, `.tscn`, `.tres`, `.gdshader`, `.gdshaderinc`, `project.godot`, `export_presets.cfg` → `laa-godot:godot-reviewer`. In a repo with a `project.godot`, these get it too: `*.uid` and `*.import` files (added, moved, or deleted), `.gitignore` and `.gitattributes` changes, and `.cs` files (next to `laa-dotnet:dotnet-reviewer`)
 - Practice reviewers for the installed practice packs. These don't depend on the language, so they join every review:
   - `laa-git:git-reviewer`: commit messages, breaking-change markers, commit shape, and files that shouldn't be committed.
   - `laa-docs:docs-reviewer`: README and onboarding docs drift (commands, env vars, ports, versions).
@@ -45,7 +58,7 @@ Call the **Workflow** tool with `name: "laa:review-panel"` and
 `args: { base, target, workdir, requirements, extraReviewers, thorough: <true if --thorough or the diff touches auth/payments/migrations> }`.
 
 ## 4. Report
-Show the confirmed findings in the findings format of the output contract, most severe first, with how many were refuted. If nothing survived, say so in a `**✓ No findings**` status line.
+Show the confirmed findings in the findings format of the output contract, most severe first, with how many were refuted. Show unverified findings (uncertain votes or verifier errors) in their own `▲` list after them: never drop them and never count them as refuted. If nothing was confirmed, say so in a status line: `**▲ No confirmed findings**` when some are unverified, `**✓ No findings**` only when none are.
 
 Then, in a repo laa has adopted, save them for the `/laa-findings` pane and later fixes: overwrite `.claude/laa/local/last-review.md` (see the output contract's local state; it's fine on the default branch) with
 ```
@@ -56,4 +69,4 @@ Then, in a repo laa has adopted, save them for the `/laa-findings` pane and late
 ```
 one `## ` entry per confirmed finding. When a finding is fixed later (with `--fix` or on request), set its `status: fixed (<short sha>)`.
 
-If `--fix` was passed, apply the fixes for critical and high findings on the branch under review, rerun the tests, commit there, and end with the closing report. Never apply them on the default branch. If you're reviewing uncommitted changes on the default branch, first create `fix/review-<short-slug>`, or use a worktree if unrelated changes are present.
+If `--fix` was passed, apply the fixes for confirmed critical and high findings on the work branch from the Git section, rerun the tests, commit there, and end with the closing report.

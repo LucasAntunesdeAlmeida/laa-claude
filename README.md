@@ -14,6 +14,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 | `laa-dotnet` | .NET/C# conventions skill + `dotnet-reviewer` agent |
 | `laa-python` | Python conventions skill (FastAPI/Django, SQLAlchemy, async) + `python-reviewer` agent |
 | `laa-js` | Node.js conventions skill for TypeScript and JavaScript + `js-reviewer` agent |
+| `laa-godot` | Godot 4 / GDScript conventions skill, game-dev practices skill (core loop, vertical slice, scope, playtesting) + `godot-reviewer` agent |
 | `laa-git` | Practice pack, any language: git conventions skill (Conventional Commits, branches, history, PRs) + `git-reviewer` agent |
 | `laa-docs` | Practice pack, any language: README/onboarding conventions skill + `docs-reviewer` agent (catches docs drift) |
 | `laa-docker` | Practice pack, any language: Docker-first local development skill (dependencies, tests, and debugging in containers when Docker is available) + `docker-reviewer` agent (catches local-environment drift) |
@@ -28,7 +29,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 - On Windows, Git Bash: the hooks and scripts are POSIX `sh`.
 - Optional:
   - the Workflow tool, for the fan-out workflows. Without it, the skills run the same agents through the Agent tool.
-  - a Claude Code build with mods (function hooks), for `laa-mods`.
+  - Claude Code 2.1.299 or later, for `laa-mods`. Mods (function hooks) are on by default from 2.1.287, and `/laa-help` and the panes use `Text` props that 2.1.299 added; an older build doesn't draw them.
   - [graphify](#code-intelligence-graphify), for code-graph exploration.
 
 ## Install
@@ -37,9 +38,9 @@ In Claude Code:
 ```
 /plugin marketplace add LucasAntunesdeAlmeida/laa-claude
 /plugin install laa@laa
-/plugin install laa-go@laa        # and/or laa-dotnet@laa, laa-python@laa, laa-js@laa
+/plugin install laa-go@laa        # and/or laa-dotnet@laa, laa-python@laa, laa-js@laa, laa-godot@laa
 /plugin install laa-git@laa       # and/or laa-docs@laa, laa-docker@laa, laa-api@laa
-/plugin install laa-mods@laa      # optional: needs a Claude Code build with mods (function hooks)
+/plugin install laa-mods@laa      # optional: needs Claude Code 2.1.299 or later
 ```
 Then run `/laa:adopt` in a repo to map it and set it up.
 
@@ -83,7 +84,9 @@ Every pipeline sizes itself to the task. Trivial bugs and small features skip th
 - `/laa:migrate-sites <change>`: finds the sites only
 - `/laa:map-repo [focus]`
 
-**Plain-language requests:** when you describe a task instead of typing a command, Claude may not be allowed to start a workflow on its own. The skills then run the same agents in parallel through the Agent tool.
+**Plain-language requests:** when you describe a task instead of typing a command, Claude isn't allowed to start a workflow on its own. The skill asks once, as soon as it knows the run will fan out: `★ Run the fan-out as a workflow?` Choose **Workflow** to run the engine (it counts votes, merges duplicates, and orders the judges in code), or **Agents** to have Claude run the same agents by hand through the Agent tool. Without the Workflow tool there's no question, and the skill goes straight to agents.
+
+**Models:** agents pin their own model and effort, so a run doesn't depend on the session's settings: `opus` at high effort where the output must be right (design, root cause, review, verification), and `sonnet` for the checklist reviewers and mechanical work. A few calls run on `fable`, because one answer there steers everything after it: the cluster step of `investigate`, the judges and the synthesis of `design-panel`, and the verifiers of a `--thorough` review or a hard bug. Where Fable isn't available, those calls rerun on `opus`.
 
 ## How it fits together
 
@@ -95,7 +98,7 @@ Every pipeline sizes itself to the task. Trivial bugs and small features skip th
             │
             └──► meta layer
                    adopt  → .claude/laa/project-map.md + repo-local agents/skills/workflows/hooks (via forge)
-                   retro  → .claude/laa/learnings.md
+                   retro  → .claude/laa/learnings.md (on a work branch, never the default branch)
                    evolve → local diffs  |  upstream PR to this repo + eval case
 ```
 
@@ -105,7 +108,7 @@ Per-project state lives in `<project>/.claude/laa/`:
 - `assets.md`: an inventory of generated assets and why each one exists
 - `local/`: state that is never committed (it ignores itself): `runs/<branch>.md`, the journal `/laa:resume` reads, and `last-review.md`, the findings the `/laa-findings` pane lists
 
-Several agents (`explorer`, `reviewer`, `investigator`, `security-reviewer`) also keep persistent **project memory** across sessions.
+Several agents (`explorer`, `reviewer`, `investigator`, `security-reviewer`) also keep persistent **local memory** across sessions, in `<project>/.claude/agent-memory-local/laa-<agent>/` (Claude Code prefixes a plugin agent's memory directory with the plugin name). It's per developer and never committed (the agents drop a `.gitignore` there on first write, and `/laa:adopt` adds the path to `.gitignore`), so parallel agents never write tracked files, on the default branch or anywhere else. `/laa:evolve` reads it for repeated patterns.
 
 ## Code intelligence (graphify)
 
@@ -186,9 +189,9 @@ Two options in `/config`:
 - `guard` is the guard's scope: `adopted` (default: repos where `.claude/laa/` holds `learnings.md` or `project-map.md`), `always` (every git repo), or `off`.
 - `visuals` is how much the plugin draws: `full` (default), or `minimal`, which keeps the text-only drawing of 0.3.0. Under `minimal` the band is one row, the footer label stays, the panes are plain lists (with CRIT and HIGH in red), and the stepper, the spinner, hint, and turn-line labels, the engine card, and the report frame are off.
 
-What each surface draws differs a little: the bars are terminal-only (the legend says the same everywhere), the band and its stepper are on the terminal and the desktop, and mobile has no filter, so its panes list everything.
+What each surface draws differs a little: the bars are terminal-only (the legend says the same everywhere), and the band and its stepper are on the terminal and the desktop. A surface that draws no select control gets no filter, and its panes list everything.
 
-**Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it, `claude plugin test ./plugins/laa-mods` runs its tests, and `node --test "plugins/laa-mods/tests/drift/*.test.mjs"` (Node 22.18 or later) checks its step and phase tables against the skills and workflows. The mods API is early access and can change between Claude Code releases.
+**Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it, `claude plugin test ./plugins/laa-mods` runs its tests, and `node --test "plugins/laa-mods/tests/drift/*.test.mjs"` (Node 22.18 or later) checks its step and phase tables against the skills and workflows. CI has no session to write the declarations, so it downloads the published copy (`mods/types/claude-code.d.ts` in the `anthropics/claude-code` repo) to `plugins/laa-mods/.claude-plugin/types/claude-code/index.d.ts`. That copy can lag behind the Claude Code release the mod is written against, so the CI type-check is non-blocking until it catches up; run tsc locally before merging. The mods API still changes between Claude Code releases, so recheck the mod after an upgrade. Mod hooks don't run in Desktop WSL sessions, and nothing is drawn in `claude -p`, the Agent SDK, or cloud sessions; that's why the rest of the toolkit doesn't depend on `laa-mods`.
 
 ## Spinner tips (optional)
 To learn the toolkit while Claude works, add these to `~/.claude/settings.json`. They join Claude Code's own tips under a `laa` label, and each waits three sessions before it shows again. Tip objects and `label` only work from user settings; project settings take plain strings only.
@@ -242,6 +245,7 @@ Cases live in `plugins/<plugin>/evals/<case>/prompt.md` + `graders/*.md`. Scaffo
 - Prefer `regex` and `file_exists` graders on a written file over an `llm` rubric on a long reply. Judges get noisy on long outputs.
 - A `tool_used: Skill` grader (`skill-fired.md`) only makes sense for a plain-language prompt, where it shows the skill was chosen. A prompt that types the command (`/laa:review ...`) loads the skill without a Skill tool call, so the grader fails every run. Leave it out of those cases.
 - Windows can't run cases that grant `Bash`, because there's no sandbox backend. Use WSL2 for those.
+- **In CI**: the `evals` workflow (`.github/workflows/evals.yml`) runs a suite on demand from the Actions tab, with pinned models, a pass threshold, and a cost ceiling. It needs the `ANTHROPIC_API_KEY` repository secret, and it never starts on its own, because every run costs money.
 
 ## Adding a stack pack
 
@@ -250,6 +254,8 @@ Copy `plugins/laa-go`, rename it, and write `skills/<stack>-conventions/SKILL.md
 ## Adding a practice pack
 
 Practice packs hold rules that don't depend on the language: git, docs, Docker, API docs and tests, and future ones like observability. Copy `plugins/laa-git`, rename it, and write `skills/<practice>-conventions/SKILL.md` and `agents/<practice>-reviewer.md`. The skill description must say when it applies (e.g. "when writing a commit message"), because nothing else triggers it. Register the pack in `.claude-plugin/marketplace.json`, and add its reviewer to the practice list in `plugins/laa/skills/review/SKILL.md` step 2.
+
+The pack's own eval cases (`plugins/<pack>/evals/`) are the before/after discriminators. The cross-plugin `/laa:review` case in `evals/` is a regression guard, since an installed pack's reviewer is usually picked even without the review-skill line: copy `evals/review-adds-docker-reviewer`, and keep "Regression guard rather than a before/after discriminator" in its description.
 
 ## Contributing
 

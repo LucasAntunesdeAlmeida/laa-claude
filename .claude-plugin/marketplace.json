@@ -37,6 +37,12 @@
       "category": "development"
     },
     {
+      "name": "laa-godot",
+      "source": "./plugins/laa-godot",
+      "description": "Godot 4 / GDScript stack pack: conventions skill, game-dev practices skill, and Godot-specific reviewer.",
+      "category": "development"
+    },
+    {
       "name": "laa-git",
       "source": "./plugins/laa-git",
       "description": "Git practice pack (any language): Conventional Commits, branch and PR conventions, and a history reviewer.",

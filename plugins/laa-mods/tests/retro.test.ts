@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { laaSkillOf } from '../hooks/git'
-import { bash, fakeRepo } from './fake'
+import { bash, fakeRepo, reply } from './fake'
 
 // The engine side of the nudge: skills expand as written, and suggestions are shown and recorded.
 function world(on: On) {
@@ -72,6 +72,25 @@ describe('/laa:retro nudge', () => {
     await $.turn.complete(turnEnd())
     await w.clock.advance(500)
     expect(w.suggested).toEqual([])
+  })
+
+  test("arms from the pipeline's mode line where skill.prompt hooks don't run, and the retro's own disarms it", async ($, on) => {
+    const w = world(on)
+    // Managed Claude Code: no skill.prompt reaches the plugin, only the model's rows.
+    await $.session.append(reply('**laa:fix** · standard · workflow mode\n\n**▸ 2/7 · Reproduce**'))
+    await $.tool.call(bash('git commit -m "fix: x"'))
+    // The same pipeline's mode line again keeps what it did so far.
+    await $.session.append(reply('**laa:fix** · standard · resumed', 'row-2'))
+    await $.turn.complete(turnEnd())
+    await w.clock.advance(500)
+    expect(w.suggested).toEqual(['/laa:retro'])
+
+    await $.session.append(reply('**laa:feature** · standard', 'row-3'))
+    await $.tool.call(bash('git commit -m "feat: y"'))
+    await $.session.append(reply('**laa:retro** · 2 learnings', 'row-4'))
+    await $.turn.complete(turnEnd())
+    await w.clock.advance(500)
+    expect(w.suggested).toEqual(['/laa:retro'])
   })
 
   test("replaces the engine's own guess with the retro while the nudge is due", async ($, on) => {

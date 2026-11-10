@@ -32,7 +32,7 @@ async function world($: Engine, on: On, f: Fake = {}) {
   on('ui.render', ($, e) => $.ui.resolve(e).Box({ key: 'engine' }))
   on('skill.prompt', ($, e) => ({ text: e.text }))
   on('agent.spawn', () => ({ model: 'claude-test', agentId: 'agent_test1' }))
-  await $.tool.call(bash('git status'))
+  await $.tool.call(bash('git switch -'))
   return { clock, writes, reads }
 }
 
@@ -372,7 +372,7 @@ describe('engine card', () => {
         <Box key="engine" />
         <Box borderDimColor borderStyle="round" flexDirection="column" key="laa-card" paddingX=1>
           <Box key="head">
-            <Text bold>"investigate"</Text>
+            <Text weight="semibold">"investigate"</Text>
             <Text dimColor>" · laa engine"</Text>
           </Box>
           <Box key="phases">
@@ -394,7 +394,7 @@ describe('engine card', () => {
         <Box key="engine" />
         <Box borderDimColor borderStyle="round" flexDirection="column" key="laa-card" paddingX=1>
           <Box key="head">
-            <Text bold>"investigate"</Text>
+            <Text weight="semibold">"investigate"</Text>
             <Text dimColor>" · laa engine · 15 agents"</Text>
           </Box>
           <Box key="phases">
@@ -418,7 +418,7 @@ describe('engine card', () => {
         <Box key="engine" />
         <Box borderDimColor borderStyle="round" flexDirection="column" key="laa-card" paddingX=1>
           <Box key="head">
-            <Text bold>"investigate"</Text>
+            <Text weight="semibold">"investigate"</Text>
             <Text dimColor>" · laa engine · 15 agents"</Text>
           </Box>
           <Box key="phases">

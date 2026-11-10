@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: implementer-tests-contract-not-stub
+context:
+  scaffold_script: fixture.sh

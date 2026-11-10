@@ -107,7 +107,7 @@ export const reportCard = (els: Els, c: Closing, tone: Tone): RenderElement | nu
     <Box key="laa-report" flexDirection="column">
       {hasPre && <Markdown key="pre" text={pre} />}
       <Box key="frame" flexDirection="column" borderStyle="round" borderColor={tone} paddingX={1}>
-        <Text bold color={tone}>{status}</Text>
+        <Text weight="semibold" color={tone}>{status}</Text>
         <Markdown key="rest" text={rest} />
       </Box>
     </Box>

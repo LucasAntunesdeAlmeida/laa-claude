@@ -211,7 +211,8 @@ const rolesLine = (roles: Readonly<Record<string, number>>) =>
 const resultOf = (card: EngineRun): { text: string; color?: typeof C.success | typeof C.warning; isDim?: boolean } | null => {
   if (card.result) {
     const glyph = card.result.charAt(0)
-    return { text: card.result, color: glyph === '✓' ? C.success : glyph === '▲' || glyph === '✗' ? C.warning : undefined }
+    const color = glyph === '✓' ? C.success : glyph === '▲' || glyph === '✗' ? C.warning : null
+    return color ? { text: card.result, color } : { text: card.result }
   }
   if (card.state === 'done') return { text: '✓ completed', color: C.success }
   if (card.state === 'failed') return { text: '✗ failed', color: C.warning }
@@ -245,7 +246,7 @@ export const engineCard = (els: Els, inner: RenderElement, card: EngineRun): Ren
         {inner}
         <Box key="laa-card" flexDirection="column" borderStyle="round" borderDimColor paddingX={1}>
           <Box key="head">
-            <Text bold>{card.name}</Text>
+            <Text weight="semibold">{card.name}</Text>
             <Text dimColor>{` · laa engine${agents}`}</Text>
           </Box>
           <Box key="phases">

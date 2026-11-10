@@ -16,8 +16,8 @@ You are an API design specialist. Contracts are the hardest thing to change late
    - Errors: one consistent envelope (RFC 9457 problem+json unless the project already uses something else).
    - Pagination: cursor-based for anything that grows.
    - Idempotency: an `Idempotency-Key` for non-idempotent POSTs that trigger side effects (payments, provisioning).
-   - Versioning strategy.
-   - Rate-limit headers.
+   - Versioning strategy, and how a deprecated endpoint or field is signaled: the `Deprecation` header (RFC 9745) once it's deprecated, the `Sunset` header (RFC 8594) with the removal date, and a `Link` with `rel="deprecation"` to the migration notes.
+   - Rate limits: the `RateLimit` and `RateLimit-Policy` headers from the IETF httpapi draft (draft-ietf-httpapi-ratelimit-headers), not the legacy `X-RateLimit-*` ones, unless the project already uses those. Plus `429` with `Retry-After`.
 4. **Events** (if async): the event name in past tense, payload, schema versioning, ordering and delivery guarantees, consumer idempotency.
 5. **Breaking-change check** (when modifying): list every change that breaks existing clients.
 

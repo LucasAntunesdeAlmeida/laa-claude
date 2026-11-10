@@ -11,6 +11,15 @@ Focus (optional): $ARGUMENTS
 ## Output
 Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: end with the closing report and **Next**. No mode or step lines; a retro is short.
 
+## Git: branch or worktree first
+`.claude/laa/learnings.md` and `project-map.md` are tracked files, so don't write them on the default branch (`main`/`master`, or whatever `origin/HEAD` points to). Find the signals first; with none, nothing is written and no branch is needed. Before the first write:
+- **Called by a pipeline** (`/laa:fix`, `/laa:feature`, `/laa:migrate`, `/laa:build`): stay on its work branch, so the learnings ship with the work.
+- **On another branch**: stay there.
+- **On the default branch**: create `git switch -c chore/laa-retro` (add a short suffix if it exists), and write there.
+- **Uncommitted changes unrelated to this**: don't switch branches under them. Work in a new git worktree on `chore/laa-retro` instead (the EnterWorktree tool, or `git worktree add ../<repo>-laa-retro -b chore/laa-retro`).
+
+Commit the learnings on that branch (`chore(laa): log learnings`). Don't merge into the default branch, push, or open a PR unless the user asks.
+
 ## 1. Look back at this session
 Find the **signals**, not a diary. Each needs concrete evidence from the conversation or diff:
 - **correction**: the user corrected an approach, convention, or assumption.
@@ -29,7 +38,7 @@ If there are no real signals, say so and stop. Don't invent learnings.
 - **target**: the exact asset that should change, for example `laa:fix step 2`, `.claude/skills/add-endpoint`, `project-map.md#testing`, or `laa-go:go-conventions`.
 
 ## 3. Append to `.claude/laa/learnings.md`
-Create the file with `# Learnings` if it's missing. Append one entry per signal:
+On the branch from the Git section. Create the file with `# Learnings` if it's missing. Append one entry per signal:
 ```markdown
 ## <YYYY-MM-DD> · <skill or context> · <short title>
 - scope: local | generic
@@ -45,6 +54,6 @@ Create the file with `# Learnings` if it's missing. Append one entry per signal:
 - Count the `open` entries. If there are 3 or more, or any single entry is high impact, put `/laa:evolve` first in **Next**.
 
 ## 5. Report
-End with the closing report: one list item per entry added (`kind · scope · title`) and **Next**. With no signals, the status line says so and nothing is written.
+End with the closing report: one list item per entry added (`kind · scope · title`), the branch they're committed on, and **Next**. With no signals, the status line says so and nothing is written.
 
 Only when a pipeline (`/laa:fix`, `/laa:feature`, `/laa:migrate`, `/laa:build`) loads this skill itself as its retro step, in the same turn, and will print its own closing report next, skip this report: list the entries as `kind · scope · title` lines, with no status line and no **Next**. When the user types `/laa:retro`, always end with the report above, even right after a pipeline.

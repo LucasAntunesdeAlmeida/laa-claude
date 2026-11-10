@@ -205,7 +205,8 @@ const barRow = (els: Els, key: string, parts: readonly Part[], columns: number):
 }
 
 // A pane's filter as a Select, or null where there is none to offer: three entries or fewer, or a surface
-// that draws no Select (mobile, whose table builds an empty Box for one). Where it is null the pane shows every entry, whatever the filter was left at.
+// that draws no Select (its table builds an empty Box for one, as mobile's did on older releases). Where it is null the pane
+// shows every entry, whatever the filter was left at.
 const filterRow = (
   els: Els,
   key: string,
@@ -264,7 +265,7 @@ export const findingsPane = (els: Els, input: FindingsInput, acts: FindingsActs)
         return (
           <Box key={`finding${f.index}`} flexDirection="column" marginTop={1}>
             <Box>
-              <Text bold color={isHigh(f) ? C.warning : undefined}>{`${f.tag.padEnd(4)}  `}</Text>
+              <Text weight="semibold" {...(isHigh(f) ? { color: C.warning } : {})}>{`${f.tag.padEnd(4)}  `}</Text>
               {href ? <Link href={href} label={location} /> : <Text dimColor>{location}</Text>}
             </Box>
             <Text>{sanitize(f.title)}</Text>
@@ -320,7 +321,7 @@ export const learningsPane = (els: Els, input: LearningsInput, acts: LearningsAc
       {shown.length === 0 && <Text dimColor>No open learnings match this filter.</Text>}
       {shown.map(entry => (
         <Box key={`entry${entry.index}`} flexDirection="column" marginTop={1}>
-          <Text bold>{sanitize(entry.title)}</Text>
+          <Text weight="semibold">{sanitize(entry.title)}</Text>
           <Text dimColor>{sanitize(entry.scope)} · {sanitize(entry.kind)} · {sanitize(entry.target)}</Text>
           <Text>{sanitize(entry.signal)}</Text>
           <Text color={C.action}>→ {sanitize(entry.proposal)}</Text>

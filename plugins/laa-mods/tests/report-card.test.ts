@@ -32,7 +32,7 @@ async function world($: Engine, on: On, f: Fake = {}) {
   on('skill.prompt', ($, e) => ({ text: e.text }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('session.end', ($, e) => ({ sessionId: e.sessionId }))
-  await $.tool.call(bash('git status'))
+  await $.tool.call(bash('git switch -'))
   return handed
 }
 
@@ -217,7 +217,7 @@ describe('report card', () => {
     expect(await drawnOnAll($, PLAIN_NEXT)).toBe(golden(`
       <Box flexDirection="column" key="laa-report">
         <Box borderColor="success" borderStyle="round" flexDirection="column" key="frame" paddingX=1>
-          <Text bold color="success">"✓ Fixed · nil address"</Text>
+          <Text color="success" weight="semibold">"✓ Fixed · nil address"</Text>
           <Markdown key="rest" text="- **Changed** 3 files\\n\\n**Next**\\n- say \\"open the PR\\": drafts it" />
         </Box>
       </Box>
@@ -231,7 +231,7 @@ describe('report card', () => {
       <Box flexDirection="column" key="laa-report">
         <Markdown key="pre" text="The fix did not hold.\\n" />
         <Box borderColor="error" borderStyle="round" flexDirection="column" key="frame" paddingX=1>
-          <Text bold color="error">"✗ Tests still fail · billing/export"</Text>
+          <Text color="error" weight="semibold">"✗ Tests still fail · billing/export"</Text>
           <Markdown key="rest" text="- **Tried** guarding the nil address; pinning the locale\\n- **Cause** the fixture ships no address at all\\n\\n**Next**\\n- say \\"fix the fixture\\": adds the address and runs the tests again" />
         </Box>
       </Box>
@@ -251,7 +251,7 @@ describe('report card', () => {
     const handed = await world($, on)
     const resumed = '**✓ Resumed and finished** · 2 slices\n- **Changed** 5 files\n\n**Next**\n- `/laa:retro`: capture what we learned'
     const tree = await drawnOnAll($, resumed)
-    expect(tree).toContain('<Text bold color="success">"✓ Resumed and finished · 2 slices"</Text>')
+    expect(tree).toContain('<Text color="success" weight="semibold">"✓ Resumed and finished · 2 slices"</Text>')
     expect(tree).toContain('<Box borderColor="success" borderStyle="round" flexDirection="column" key="frame" paddingX=1>')
     expect(handed.AssistantMessage).toBeUndefined()
   })
@@ -317,9 +317,9 @@ describe('report card', () => {
     await world($, on)
     const under = '\n- **Cause** a retried webhook\n\n**Next**\n- `/laa:fix the retry`: try again'
     expect(await drawnOnAll($, `**✗ Tests still fail** · \`internal/orders/cancel.go:42\`${under}`))
-      .toContain('<Text bold color="warning">"✗ Tests still fail · internal/orders/cancel.go:42"</Text>')
+      .toContain('<Text color="warning" weight="semibold">"✗ Tests still fail · internal/orders/cancel.go:42"</Text>')
     expect(await drawnOnAll($, `**✓ Opened the PR** · [orders#12](https://example.com/orders/pull/12)${under}`))
-      .toContain('<Text bold color="success">"✓ Opened the PR · orders#12"</Text>')
+      .toContain('<Text color="success" weight="semibold">"✓ Opened the PR · orders#12"</Text>')
   })
 
   test("leaves a report too long for one drawing to the engine's own", async ($, on) => {
@@ -408,7 +408,7 @@ describe('one red item', () => {
     // The mounted card follows the change with no redraw asked for: it read the state it is colored from.
     await $.command.run(allowMainRun)
     expect(show(await ui.drawn())).toContain('borderColor="error"')
-    expect(show(await ui.drawn())).toContain('<Text bold color="error">')
+    expect(show(await ui.drawn())).toContain('<Text color="error" weight="semibold">')
     await ui.unmount()
   })
 })
@@ -426,7 +426,7 @@ describe('a block drawn before its row is stored', () => {
       await $.session.append(reply(text, `row-${surface}`))
       const tree = show(await ui.drawn())
       expect(tree, surface).toContain('<Box borderColor="success" borderStyle="round" flexDirection="column" key="frame" paddingX=1>')
-      expect(tree, surface).toContain(`<Text bold color="success">"✓ Fixed on ${surface} · nil address"</Text>`)
+      expect(tree, surface).toContain(`<Text color="success" weight="semibold">"✓ Fixed on ${surface} · nil address"</Text>`)
       await ui.unmount()
     }
   })

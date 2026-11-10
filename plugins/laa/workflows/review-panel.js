@@ -34,6 +34,17 @@ const fromText = (raw, key) => {
   return text ? { [key]: text } : {}
 }
 
+// A stage pinned to `fable` reruns once on `opus` when it throws or comes back empty: accounts and providers
+// without Fable reject the call, and losing the stage would lose the run. A stage the user skips looks the
+// same from here, so it is rerun too.
+const orOpus = (prompt, opts) => {
+  const rerun = () => {
+    log(`${opts.label}: no result on ${opts.model}; rerunning on opus`)
+    return spawn(prompt, { ...opts, model: 'opus' })
+  }
+  return agent(prompt, opts).then(r => (r == null ? rerun() : r), rerun)
+}
+
 const FINDINGS = {
   type: 'object',
   properties: {
@@ -79,46 +90,100 @@ const scope = `${where}${diff} (read surrounding code, not just hunks).` +
 
 const DIMENSIONS = [
   { key: 'correctness', agentType: 'laa:reviewer', ask: 'Focus on correctness: logic errors, error handling, nil/null paths, transactions, races, broken invariants.' },
-  { key: 'completeness', agentType: 'laa:reviewer', ask: 'Focus on completeness and conventions: unmet acceptance criteria, missing tests for edge cases (empty, max, concurrent, other tenant), deviations from repo patterns.' },
+  { key: 'completeness', agentType: 'laa:reviewer', ask: 'Focus on completeness and conventions: unmet acceptance criteria, missing tests for the edge cases this change introduces (empty, max, concurrent, other tenant), deviations from repo patterns, and violations of the CLAUDE.md files that apply to the changed paths (the root one, plus any in a changed file\'s directory or its parents). Quote the rule a finding breaks.' },
   { key: 'security', agentType: 'laa:security-reviewer', ask: 'Security review of this diff.' },
   { key: 'performance', agentType: 'laa:perf-reviewer', ask: 'Performance review of this diff.' },
   ...(input.extraReviewers || []).map(t => ({ key: t.split(':').pop(), agentType: t, ask: 'Review this change from your specialty (stack or practice).' })),
 ]
 
-const key = f => `${f.file}:${Math.round(f.line / 5)}`
+// What every reviewer leaves out, so the panel reports signal only.
+const SKIP = 'Report only issues this diff introduces or makes worse. Skip pre-existing issues in code the diff ' +
+  "doesn't change, pure style and formatting issues, checks this repo's own CI already enforces (its configured linters, " +
+  "formatter, type checker), pedantic nitpicks a senior engineer wouldn't raise, and generic complaints (\"add more tests\", " +
+  '"consider security") not tied to a concrete failure in this change. None of these skips ever covers a correctness, ' +
+  'security, or performance defect: report a real bug even when some linter could also flag it.'
+
+// Verdicts fall in three buckets. Confirmed or refuted needs at least half of the requested votes and more
+// votes than the opposite verdict. Everything else (uncertain verdicts, verifier errors that return null,
+// split votes) is unverified: reported separately, never dropped and never counted as refuted.
+const classify = (vs, requested) => {
+  const votes = vs.filter(Boolean)
+  const confirmed = votes.filter(v => v.verdict === 'confirmed').length
+  const refuted = votes.filter(v => v.verdict === 'refuted').length
+  const status = confirmed * 2 >= requested && confirmed > refuted ? 'confirmed'
+    : refuted * 2 >= requested && refuted > confirmed ? 'refuted'
+      : 'unverified'
+  return { status, confirmed, refuted, uncertain: votes.length - confirmed - refuted, errored: requested - votes.length, votes }
+}
+
+// A thorough review sends three skeptics per finding, each with its own way of attacking the claim. Three
+// identical prompts tend to agree for the same reason, so they settle less than three different checks do.
+// They run on `fable` (see orOpus): thorough is for auth, payments, and migrations, where a wrong verdict costs most.
+const LENSES = [
+  'code-path: read the flagged code, its callers, and the framework behavior it relies on',
+  'reproduction: run or write a check that would fail if the issue were real',
+  'pre-existing: compare with the base version, and look for a guard elsewhere that already prevents it',
+]
+const verify = input.thorough ? orOpus : spawn
+
+// Dedupe within a dimension only: nearby lines from the same reviewer are one finding. Two dimensions
+// flagging the same spot usually report different issues (a missing tenant check next to a nil path), so both stay.
+const key = f => `${f.dimension}:${f.file}:${Math.round(f.line / 5)}`
 const seen = new Set()
 
 // Pipeline: each dimension's findings go to verification as soon as that dimension finishes.
 const results = await pipeline(DIMENSIONS,
-  d => spawn(`${scope}\n\n${d.ask}\n\nOnly report findings you would bet on.`,
+  d => spawn(`${scope}\n\n${d.ask}\n\n${SKIP}\n\nOnly report findings you would bet on.`,
     { label: `review:${d.key}`, phase: 'Review', agentType: d.agentType, schema: FINDINGS })
     .then(r => (r ? r.findings : []).map(f => ({ ...f, dimension: d.key }))),
   findings => {
     const fresh = findings.filter(f => !seen.has(key(f)) && (seen.add(key(f)), true))
-    const votesPer = input.thorough ? 3 : 1
+    const votesPer = input.thorough ? LENSES.length : 1
     return parallel(fresh.map(f => () =>
       parallel(Array.from({ length: votesPer }, (_, v) => () =>
-        spawn(`${scope}\n\nCLAIMED ISSUE (${f.severity}) at ${f.file}:${f.line}: ${f.title}\nSCENARIO: ${f.scenario}\n\nTry to REFUTE it.`,
-          { label: `verify:${f.file.split('/').pop()}:${f.line}${votesPer > 1 ? `#${v + 1}` : ''}`, phase: 'Verify', agentType: 'laa:verifier', ...(input.thorough && { effort: 'xhigh' }), schema: VERDICT })))
-        .then(vs => {
-          const votes = vs.filter(Boolean)
-          const refuted = votes.filter(v => v.verdict === 'refuted').length
-          return { ...f, verified: votes.length > 0 && refuted * 2 < votes.length, votes }
-        })))
+        verify(`${scope}\n\nCLAIMED ISSUE (${f.severity}) at ${f.file}:${f.line}: ${f.title}\nSCENARIO: ${f.scenario}\n\n` +
+          `Try to REFUTE it${input.thorough ? ` through the ${LENSES[v]} lens` : ''}. ` +
+          'An issue that already existed before this diff, and that the diff does not make worse, counts as refuted.',
+          { label: `verify:${f.file.split('/').pop()}:${f.line}${votesPer > 1 ? `#${v + 1}` : ''}`, phase: 'Verify', agentType: 'laa:verifier', ...(input.thorough && { model: 'fable', effort: 'xhigh' }), schema: VERDICT })))
+        .then(vs => ({ ...f, ...classify(vs, votesPer) }))))
   })
 
-const all = results.filter(Boolean).flat().filter(Boolean)
 const order = { critical: 0, high: 1, medium: 2, low: 3 }
-const confirmed = all.filter(f => f.verified).sort((a, b) => order[a.severity] - order[b.severity])
-const dropped = all.length - confirmed.length
-if (dropped) log(`${dropped} finding(s) refuted by verifiers and dropped`)
+const rank = { confirmed: 0, unverified: 1, refuted: 2 }
+// Two dimensions can still report the very same issue: same file, a line within 2, and the same title once
+// case and punctuation are ignored. Their verifiers may disagree, so merge regardless of status: keep the best
+// status (confirmed > unverified > refuted), raise to the highest severity, and list every dimension that
+// found it. Anything that differs stays a separate finding.
+const norm = t => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+const merged = []
+for (const f of results.filter(Boolean).flat().filter(Boolean)
+  .sort((a, b) => rank[a.status] - rank[b.status] || order[a.severity] - order[b.severity])) {
+  const same = merged.find(m => m.file === f.file && Math.abs(m.line - f.line) <= 2 && norm(m.title) === norm(f.title))
+  if (!same) { merged.push({ ...f, dimensions: [f.dimension] }); continue }
+  same.dimensions.push(f.dimension)
+  if (order[f.severity] < order[same.severity]) same.severity = f.severity
+}
+merged.sort((a, b) => order[a.severity] - order[b.severity])
+const confirmed = merged.filter(f => f.status === 'confirmed')
+const unverified = merged.filter(f => f.status === 'unverified')
+const refutedCount = merged.filter(f => f.status === 'refuted').length
+if (refutedCount) log(`${refutedCount} finding(s) refuted by verifiers and dropped`)
+if (unverified.length) log(`${unverified.length} finding(s) unverified: uncertain verdicts or verifier errors`)
 
 const TAG = { critical: 'CRIT', high: 'HIGH', medium: 'MED', low: 'LOW' }
 const dims = DIMENSIONS.map(d => d.key).join(', ')
-const report = render(confirmed.length
-  ? [
-    `**${confirmed.length} ${confirmed.length === 1 ? 'finding' : 'findings'}** · ${dropped} refuted · ${dims}`,
-    ...confirmed.map(f => `- \`${TAG[f.severity]}\` \`${f.file}:${f.line}\` ${f.title} → ${f.fix}`),
-  ]
-  : [`**✓ No findings** · ${dropped} refuted · ${dims}`])
-return { report, degraded, confirmed, refutedCount: dropped }
+const line = f => `- \`${TAG[f.severity]}\` \`${f.file}:${f.line}\` ${f.title} → ${f.fix}`
+const why = f => [
+  f.uncertain && `${f.uncertain} uncertain`,
+  f.errored && `${f.errored} verifier ${f.errored === 1 ? 'error' : 'errors'}`,
+].filter(Boolean).join(', ') || 'split vote'
+const counts = `${unverified.length ? `${unverified.length} unverified · ` : ''}${refutedCount} refuted · ${dims}`
+const report = render([
+  confirmed.length
+    ? `**${confirmed.length} ${confirmed.length === 1 ? 'finding' : 'findings'}** · ${counts}`
+    : unverified.length ? `**▲ No confirmed findings** · ${counts}` : `**✓ No findings** · ${counts}`,
+  ...confirmed.map(line),
+  ...(unverified.length ? ['', `**▲ ${unverified.length} unverified** · verifiers couldn't settle these; check them by hand`] : []),
+  ...unverified.map(f => `${line(f)} · ${why(f)}`),
+])
+return { report, degraded, confirmed, unverified, refutedCount }

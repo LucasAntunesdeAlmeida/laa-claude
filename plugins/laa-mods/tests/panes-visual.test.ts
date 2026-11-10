@@ -5,7 +5,7 @@ import type { On } from 'claude-code'
 import { decodeCells, DEFAULT_FG } from '../hooks/draw'
 import { isInGit } from '../hooks/git'
 import { locationOf, snippetOf, snippetsOf } from '../hooks/panes'
-import { ALL_SURFACES, bash, commandRun, fakeRepo, PANE, ROOT, show, turnEnd } from './fake'
+import { ALL_SURFACES, bash, commandRun, fakeRepo, PANE, ROOT, show, styleOf, turnEnd } from './fake'
 import type { Drawn, Fake } from './fake'
 
 // The panes under `visuals: full` (the default): the bars, the legends, the filters, and under each finding
@@ -102,7 +102,7 @@ async function world($: Engine, on: On, f: Fake = {}) {
     filled.push(e.text)
     return { isFilled: true }
   })
-  await $.tool.call(bash('git status'))
+  await $.tool.call(bash('git switch -'))
   return { seen, filled, writes }
 }
 
@@ -270,11 +270,11 @@ describe('findings pane · visuals: full', () => {
       const tree = (await ui.drawn()) as Drawn
       expect(show(tree), surface).not.toContain('error')
       const tags = ['finding0', 'finding1', 'finding2', 'finding3'].map(key => all(keyed(tree, key) ?? '', 'Text')[0])
-      expect(tags.map(t => [t?.children?.[0], t?.props]), surface).toEqual([
-        ['CRIT  ', { bold: true, color: 'warning' }],
-        ['HIGH  ', { bold: true, color: 'warning' }],
-        ['MED   ', { bold: true }],
-        ['LOW   ', { bold: true }],
+      expect(tags.map(t => [t?.children?.[0], styleOf(t?.props ?? {})]), surface).toEqual([
+        ['CRIT  ', { color: 'warning', weight: 'semibold' }],
+        ['HIGH  ', { color: 'warning', weight: 'semibold' }],
+        ['MED   ', { weight: 'semibold' }],
+        ['LOW   ', { weight: 'semibold' }],
       ])
       await ui.unmount()
     }
@@ -335,19 +335,15 @@ describe('findings pane · visuals: full', () => {
     await ui.unmount()
   })
 
-  test('draws no filter on mobile, which shows every finding whatever the filter is', async ($, on) => {
+  test('keeps the filter set on one surface on every other that draws a Select, mobile included', async ($, on) => {
     await world($, on, { files: FILES, sizes: SIZES })
     await $.command.run(commandRun('laa-findings'))
     const terminal = await $.ui.mount({ ...PANE.findings, surface: 'terminal' })
     await terminal.select({ key: 'severity', value: 'med' })
     await terminal.unmount()
 
-    const mobile = await $.ui.mount({ ...PANE.findings, surface: 'mobile' })
-    expect(all((await mobile.drawn()) as Drawn, 'Select')).toEqual([])
-    for (const title of Object.values(TITLES)) expect(await mobile.find({ type: 'Text', text: title }), title).toBeDefined()
-    await mobile.unmount()
-
-    for (const surface of ['desktop', 'vscode'] as const) {
+    // Mobile's table builds a Select on current Claude Code, so it filters like the rest.
+    for (const surface of ['desktop', 'vscode', 'mobile'] as const) {
       const ui = await $.ui.mount({ ...PANE.findings, surface })
       expect((await ui.find({ type: 'Select', key: 'severity' }))?.props.value, surface).toBe('med')
       expect(await ui.find({ type: 'Text', text: TITLES.crit }), surface).toBeUndefined()
@@ -541,7 +537,7 @@ describe('finding snippets · safe to draw', () => {
     ].join('\n')
     const { seen } = await world($, on, {
       files: { [REVIEW_FILE]: review, 'internal/billing/invoice.go': SOURCE },
-      links: {
+      linkedFiles: {
         'internal/billing/vendor.go': { to: 'C:/other/secret.go', text: 'token = "invented"' },
         'internal/billing/alias.go': { to: `${ROOT}/internal/billing/invoice.go`, text: SOURCE },
       },
@@ -719,7 +715,7 @@ describe('learnings pane · visuals: full', () => {
       expect(show(keyed(tree, 'entry0') ?? ''), surface).toBe(
         [
           '<Box flexDirection="column" key="entry0" marginTop=1>',
-          '  <Text bold>"2026-01-10 · laa:fix · wrong test command"</Text>',
+          '  <Text weight="semibold">"2026-01-10 · laa:fix · wrong test command"</Text>',
           '  <Text dimColor>"local" " · " "correction" " · " "CLAUDE.md"</Text>',
           '  <Text>"saw wrong test command"</Text>',
           '  <Text color="suggestion">"→ " "note wrong test command"</Text>',
@@ -751,10 +747,10 @@ describe('learnings pane · visuals: full', () => {
       expect(await keysOf(ui), surface).toEqual(['reject0', 'reject1', 'reject4', 'evolve'])
       expect((await legend(ui))?.text, surface).toBe(SCOPE_LEGEND)
 
-      // Mobile has no Select: it shows every learning, whatever the filter is.
+      // Mobile draws the same filter: the scope picked on another surface holds there.
       const mobile = await $.ui.mount({ ...PANE.learnings, surface: 'mobile' })
-      expect(all((await mobile.drawn()) as Drawn, 'Select'), surface).toEqual([])
-      expect(await keysOf(mobile), surface).toEqual(['reject0', 'reject1', 'reject3', 'reject4', 'reject5', 'evolve'])
+      expect((await mobile.find({ type: 'Select', key: 'scope' }))?.props.value, surface).toBe('local')
+      expect(await keysOf(mobile), surface).toEqual(['reject0', 'reject1', 'reject4', 'evolve'])
       await mobile.unmount()
 
       await $.command.run(commandRun('laa-learnings'))

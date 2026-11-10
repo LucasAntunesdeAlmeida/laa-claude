@@ -47,7 +47,7 @@ async function world($: Engine, on: On, f: Fake) {
   })
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('skill.prompt', ($, e) => ({ text: e.text }))
-  await $.tool.call(bash('git status'))
+  await $.tool.call(bash('git switch -'))
   return footers
 }
 
@@ -351,7 +351,7 @@ describe('0.3.0 findings pane', () => {
         <Text dimColor>"C:/r"</Text>
         <Box flexDirection="column" key="finding0" marginTop=1>
           <Box>
-            <Text bold color="error">"CRIT"</Text>
+            <Text color="error" weight="semibold">"CRIT"</Text>
             <Text dimColor>"  src/export/csv.go:14"</Text>
           </Box>
           <Text>"formula injection in exported cells"</Text>
@@ -363,7 +363,7 @@ describe('0.3.0 findings pane', () => {
         </Box>
         <Box flexDirection="column" key="finding1" marginTop=1>
           <Box>
-            <Text bold color="error">"HIGH"</Text>
+            <Text color="error" weight="semibold">"HIGH"</Text>
             <Text dimColor>"  src/export/csv.go:52"</Text>
           </Box>
           <Text>"rows dropped past the first page"</Text>
@@ -375,7 +375,7 @@ describe('0.3.0 findings pane', () => {
         </Box>
         <Box flexDirection="column" key="finding2" marginTop=1>
           <Box>
-            <Text bold color="warning">"MED "</Text>
+            <Text color="warning" weight="semibold">"MED "</Text>
             <Text dimColor>"  src/export/job.go:8"</Text>
           </Box>
           <Text>"job retried without backoff"</Text>
@@ -387,7 +387,7 @@ describe('0.3.0 findings pane', () => {
         </Box>
         <Box flexDirection="column" key="finding3" marginTop=1>
           <Box>
-            <Text bold>"LOW "</Text>
+            <Text weight="semibold">"LOW "</Text>
             <Text dimColor>"  src/export/job.go:30"</Text>
           </Box>
           <Text>"misleading log line"</Text>
@@ -460,14 +460,14 @@ describe('0.3.0 learnings pane', () => {
       <Box flexDirection="column">
         <Text dimColor>"C:/r"</Text>
         <Box flexDirection="column" key="entry0" marginTop=1>
-          <Text bold>"2026-01-10 · laa:fix · wrong test command"</Text>
+          <Text weight="semibold">"2026-01-10 · laa:fix · wrong test command"</Text>
           <Text dimColor>"local" " · " "wrong-assumption" " · " "project-map.md#testing"</Text>
           <Text>"tests need \`make test-int\`"</Text>
           <Text color="suggestion">"→ " "fix the testing section"</Text>
           <Button key="reject0" label="Reject" />
         </Box>
         <Box flexDirection="column" key="entry1" marginTop=1>
-          <Text bold>"2026-01-12 · laa:feature · missed migration"</Text>
+          <Text weight="semibold">"2026-01-12 · laa:feature · missed migration"</Text>
           <Text dimColor>"generic" " · " "missed-step" " · " "laa:feature step 6"</Text>
           <Text>"new column shipped without a migration"</Text>
           <Text color="suggestion">"→ " "add a migration check"</Text>

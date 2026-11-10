@@ -12,10 +12,14 @@ Bug: $ARGUMENTS
 Follow `${CLAUDE_PLUGIN_ROOT}/references/output.md`: start with the mode line, write a step line as each step starts (steps 0–7), ask every ★ gate as a gate card, and end with the closing report and **Next**. Keep the run's journal there too, at each gate and at the end.
 
 ## Running the workflows
-Steps that call a workflow use the **Workflow** tool. You may not be able to use it here, because the tool isn't available or its opt-in rules don't allow it (the user didn't type this command). In that case, run the same fan-out yourself:
-1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
-2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type` and its `model` values as `model`, reuse its prompts, and set `isolation: "worktree"` where the script does.
-3. Name the mode in the mode line (`workflow mode` or `agent mode`).
+Steps that call a workflow use the **Workflow** tool. A workflow counts votes, merges duplicates, and orders the judges in code, so prefer it. Two things can keep you from calling it:
+- **Its opt-in rules don't allow it**, because the user described the task instead of typing this command. Ask once per run, as soon as you know the run will fan out (after the size triage, when the skill has one), as a gate card: `★ Run the fan-out as a workflow?`, with one line on what would run and roughly how many agents. The options are **Workflow** (recommended; this answer is the user's opt-in for every workflow step of the run), **Agents** (you run the same fan-out yourself), and **Stop**. Don't ask when the run skips the fan-out.
+- **The tool isn't available**, or the user chose **Agents**. Run the same fan-out yourself:
+  1. Read the workflow's script in `${CLAUDE_PLUGIN_ROOT}/workflows/`.
+  2. Carry out each phase as one message with parallel Agent calls. Use the script's `agentType` values as `subagent_type`, pass its `model` and `effort` values as `model` and `effort`, reuse its prompts, and set `isolation: "worktree"` where the script does. A stage the script runs through `orOpus` goes on `fable` first, then on `opus` if that fails.
+  3. Apply the script's own rules to the results: how it counts verifier votes, merges duplicates, and ranks.
+
+Name the mode in the mode line (`workflow mode` or `agent mode`). When you had to ask, leave it out of the mode line and say it in one line right after the answer.
 
 ## Git: branch or worktree first
 In a git repository, don't change files on the default branch (`main`/`master`, or whatever `origin/HEAD` points to). Before the first file change (the reproduction test counts):
@@ -38,15 +42,17 @@ Decide which size fits and put it in the mode line:
 
 ## 2. Reproduce first
 Delegate to the `laa:test-engineer` agent in **reproduce** mode: the smallest test that fails *because of the bug*. Confirm the failure matches the reported symptom.
+- Record the last known-good ref or version when it's known (a tag, a release, the last good deploy), and pass it to step 3.
+- For a regression with a failing repro command and a known-good ref, bisect first: in a throwaway worktree, `git bisect start <bad> <good>`, then `git bisect run <repro command>` (it must exit 0 when good, 1–127 but not 125 when bad), then `git bisect reset`. Hand the first bad commit to step 3.
 If it can't be reproduced, collect what's missing (logs, input data, environment, version) and ask the user targeted questions. Don't guess-fix an unreproduced bug unless the user explicitly accepts that.
 
 ## 3. Investigate (fan-out)
 Call the **Workflow** tool with `name: "laa:investigate"` and
-`args: { bug, repro: <failing test + output>, context: <relevant project-map excerpt>, thorough: <true for Hard> }`.
+`args: { bug, repro: <failing test + output>, context: <relevant project-map excerpt, last known-good ref, first bad commit if bisected>, thorough: <true for Hard> }`.
 Optionally narrow `angles` (defaults: recent-changes, data-flow, config-env, concurrency, data-state). Drop angles that clearly don't apply, such as concurrency for a pure function.
 
 ## 4. Decide
-Present the surviving root causes, ranked, each with its evidence and verification votes. If the top one is clearly confirmed, proceed. If the survivors conflict or all are uncertain, run the `howToConfirm` check yourself, or ★ ask which root cause to fix as a gate card (the causes are the options).
+Present the root causes the workflow returns in its three buckets (confirmed, unverified, refuted), each with its evidence and verification votes. Unverified ones (uncertain votes or verifier errors) are neither confirmed nor ruled out. If the top one is clearly confirmed, proceed. If the confirmed ones conflict, or none is confirmed, run the `howToConfirm` check yourself, or ★ ask which root cause to fix as a gate card (the causes are the options).
 
 ## 5. Fix
 - Apply the **minimal** fix at the root cause, not at the symptom. Follow the repo's conventions.
@@ -57,6 +63,8 @@ Present the surviving root causes, ranked, each with its evidence and verificati
 For standard and hard bugs, call the **Workflow** tool with `name: "laa:review-panel"` and
 `args: { base: <branch point>, requirements: "Fix: <root cause>. Must not change behavior beyond the fix." }`.
 For trivial ones, a single `laa:reviewer` agent is enough. Address any confirmed findings, then commit on the work branch.
+
+When the fix makes a security check accept more (a guard, validator, sanitizer, or authorization rule that now lets through what it refused), add to `requirements` (or the single reviewer's prompt): run the old and new code over the same inputs, and report every input the old code refused that the new code allows. Tests that pass don't show this.
 
 ## 7. Close the loop
 - Run the **retro** step (the `laa:retro` skill): was this a bug *class* that could recur? If so, propose a prevention, such as a lint rule, a hook, a repo-local skill rule, or a test helper. Suggestions only; don't apply them without approval.

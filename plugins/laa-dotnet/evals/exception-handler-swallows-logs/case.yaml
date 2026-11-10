@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: exception-handler-swallows-logs
+context:
+  scaffold_script: fixture.sh

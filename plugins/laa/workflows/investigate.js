@@ -4,7 +4,7 @@ export const meta = {
   whenToUse: 'Called by /laa:fix for non-trivial bugs, or typed as /laa:investigate <bug description>. args: { bug, repro?, context?, angles?, thorough? }',
   phases: [
     { title: 'Investigate', detail: 'one investigator per angle' },
-    { title: 'Cluster', detail: 'merge duplicate hypotheses', model: 'opus' },
+    { title: 'Cluster', detail: 'merge duplicate hypotheses', model: 'fable' },
     { title: 'Verify', detail: 'skeptics try to refute each root cause' },
   ],
 }
@@ -33,6 +33,17 @@ const fromText = (raw, key) => {
     try { return JSON.parse(text) } catch (e) { /* not JSON: treat as plain text */ }
   }
   return text ? { [key]: text } : {}
+}
+
+// A stage pinned to `fable` reruns once on `opus` when it throws or comes back empty: accounts and providers
+// without Fable reject the call, and losing the stage would lose the run. A stage the user skips looks the
+// same from here, so it is rerun too.
+const orOpus = (prompt, opts) => {
+  const rerun = () => {
+    log(`${opts.label}: no result on ${opts.model}; rerunning on opus`)
+    return spawn(prompt, { ...opts, model: 'opus' })
+  }
+  return agent(prompt, opts).then(r => (r == null ? rerun() : r), rerun)
 }
 
 const DEFAULT_ANGLES = ['recent-changes', 'data-flow', 'config-env', 'concurrency', 'data-state']
@@ -118,38 +129,60 @@ if (!all.length) {
 
 // Barrier is intentional: clustering needs every angle's hypotheses at once.
 phase('Cluster')
-const clustered = await agent(
+const clustered = await orOpus(
   `${brief}\n\nThese hypotheses came from independent investigators. Merge ones describing the same root cause, ` +
   `drop any that do not explain the exact symptom, and return at most 5 clusters ordered by likelihood.\n\n` +
   JSON.stringify(all, null, 2),
-  { label: 'cluster', phase: 'Cluster', model: 'opus', effort: 'medium', schema: CLUSTERS })
+  { label: 'cluster', phase: 'Cluster', model: 'fable', effort: 'medium', schema: CLUSTERS })
 const clusters = (clustered && clustered.clusters) || []
 
 const LENSES = input.thorough
   ? ['code-path: read the implicated code and callers', 'reproduction: run or write a check that would fail if this were the cause', 'alternative: find a different explanation that fits the symptom better']
   : ['code-path: read the implicated code and callers', 'reproduction: run or write a check that would fail if this were the cause']
 
+// Verdicts fall in three buckets. Confirmed or refuted needs at least half of the lenses and more votes than
+// the opposite verdict. Everything else (uncertain verdicts, verifier errors that return null, split votes)
+// is unverified: reported separately, never counted as refuted.
+const classify = (vs, requested) => {
+  const votes = vs.filter(Boolean)
+  const confirmed = votes.filter(v => v.verdict === 'confirmed').length
+  const refuted = votes.filter(v => v.verdict === 'refuted').length
+  const status = confirmed * 2 >= requested && confirmed > refuted ? 'confirmed'
+    : refuted * 2 >= requested && refuted > confirmed ? 'refuted'
+      : 'unverified'
+  return { status, confirmed, refuted, uncertain: votes.length - confirmed - refuted, errored: requested - votes.length, votes }
+}
+
+// Thorough runs (hard bugs: intermittent, concurrency, prod-only) verify on `fable`; see orOpus.
+const verify = input.thorough ? orOpus : spawn
 phase('Verify')
 const verified = await parallel(clusters.map((c, i) => () =>
   parallel(LENSES.map(lens => () =>
-    spawn(`${brief}\n\nCLAIMED ROOT CAUSE: ${c.rootCause}\nLOCATION: ${c.location}\nMECHANISM: ${c.mechanism}\n\n` +
+    verify(`${brief}\n\nCLAIMED ROOT CAUSE: ${c.rootCause}\nLOCATION: ${c.location}\nMECHANISM: ${c.mechanism}\n\n` +
       `Try to REFUTE this claim using the ${lens} lens.`,
-      { label: `verify:${i + 1}:${lens.split(':')[0]}`, phase: 'Verify', agentType: 'laa:verifier', ...(input.thorough && { effort: 'xhigh' }), schema: VERDICT })))
+      { label: `verify:${i + 1}:${lens.split(':')[0]}`, phase: 'Verify', agentType: 'laa:verifier', ...(input.thorough && { model: 'fable', effort: 'xhigh' }), schema: VERDICT })))
     .then(vs => {
-      const votes = vs.filter(Boolean)
-      const confirmed = votes.filter(v => v.verdict === 'confirmed').length
-      const refuted = votes.filter(v => v.verdict === 'refuted').length
-      return { ...c, confirmed, refuted, survives: confirmed >= 1 && refuted < Math.ceil(votes.length / 2), votes }
+      const v = classify(vs, LENSES.length)
+      return { ...c, ...v, survives: v.status === 'confirmed' }
     })))
 
-const ranked = verified.filter(Boolean).sort((a, b) => (b.confirmed - b.refuted) - (a.confirmed - a.refuted))
-const survivors = ranked.filter(r => r.survives).length
-log(`${survivors}/${ranked.length} root causes survived verification`)
+const rank = { confirmed: 0, unverified: 1, refuted: 2 }
+const ranked = verified.filter(Boolean)
+  .sort((a, b) => rank[a.status] - rank[b.status] || (b.confirmed - b.refuted) - (a.confirmed - a.refuted))
+const count = s => ranked.filter(r => r.status === s).length
+log(`${count('confirmed')}/${ranked.length} root causes confirmed, ${count('unverified')} unverified`)
 
+const tally = c => [
+  `${c.confirmed} confirmed`, `${c.refuted} refuted`,
+  c.uncertain && `${c.uncertain} uncertain`,
+  c.errored && `${c.errored} verifier ${c.errored === 1 ? 'error' : 'errors'}`,
+].filter(Boolean).join(', ')
 const report = render([
-  `**${survivors} of ${ranked.length} root causes survived verification** · ${angles.length} angles`,
-  ...ranked.map(c => c.survives
-    ? `- ✓ \`${c.location}\` ${c.rootCause} · ${c.confirmed} confirmed, ${c.refuted} refuted → ${c.howToConfirm}`
-    : `- ✗ \`${c.location}\` ${c.rootCause} · refuted`),
+  `**${count('confirmed')} of ${ranked.length} root causes confirmed** · ${count('unverified')} unverified · ${count('refuted')} refuted · ${angles.length} angles`,
+  ...ranked.map(c => c.status === 'confirmed'
+    ? `- ✓ \`${c.location}\` ${c.rootCause} · ${tally(c)} → ${c.howToConfirm}`
+    : c.status === 'unverified'
+      ? `- ▲ \`${c.location}\` ${c.rootCause} · unverified: ${tally(c)} → ${c.howToConfirm}`
+      : `- ✗ \`${c.location}\` ${c.rootCause} · refuted`),
 ])
 return { report, degraded, hypotheses: ranked }

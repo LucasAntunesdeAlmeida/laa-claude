@@ -49,6 +49,41 @@ expect quiet "notes for the release are in docs/"
 expect quiet "add a now() helper to the clock package"
 expect quiet "fix the 500 on GET /invoices"
 
+# Harness-injected turns (subagent hand-backs, background-task notifications) aren't the user, even when
+# the text they carry reads like a correction.
+expect quiet "<agent-message from=\\\"implementer\\\">no, that's wrong: the tests fail</agent-message>"
+expect quiet "[Subagent hand-back] you forgot the migration"
+expect quiet "<task-notification><status>failed</status> that's wrong</task-notification>"
+expect quiet "[SYSTEM NOTIFICATION] don't use the cache"
+# The same, with the angle bracket escaped the way some JSON encoders write it (backslash, u003c).
+esc=$(printf '\134u003c')
+expect quiet "${esc}agent-message>no, you forgot the tests"
+expect quiet "${esc}task-notification>that's wrong"
+# A real correction that only mentions the words is still flagged.
+expect flagged "no, the agent message was wrong"
+
+# Only the prompt's own text counts. Fields after it in the hook JSON aren't the user speaking, and an
+# escaped quote inside the prompt doesn't end it.
+raw() {
+  printf '%s' "$1" | CLAUDE_PROJECT_DIR="$repo" sh "$hook" | grep -q additionalContext
+}
+if raw '{"prompt":"add a retry to the client","cwd":"/srv/never use this/app","permission_mode":"default"}'; then
+  echo "FAIL: text in a field after the prompt was flagged"
+  fail=1
+fi
+if ! raw '{"prompt":"you forgot the migration","cwd":"/srv/app","permission_mode":"default"}'; then
+  echo "FAIL: a correction was missed when fields follow the prompt"
+  fail=1
+fi
+if ! raw '{"prompt":"call the table \"orders\". you forgot the index","cwd":"/srv/app"}'; then
+  echo "FAIL: a correction after an escaped quote was missed"
+  fail=1
+fi
+if raw '{"cwd":"/srv/app","prompt":""}'; then
+  echo "FAIL: an empty prompt was flagged"
+  fail=1
+fi
+
 # Repos laa hasn't adopted are left alone, including one where only laa's local state was written.
 for dir in "$repo/elsewhere" "$repo/fresh"; do
   if printf '{"prompt":"that is wrong"}' | CLAUDE_PROJECT_DIR="$dir" sh "$hook" | grep -q .; then

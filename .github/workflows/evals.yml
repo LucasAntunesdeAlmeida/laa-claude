@@ -1,0 +1,78 @@
+name: evals
+
+# Runs an eval suite on demand. It calls the API and costs money, so nothing triggers it automatically:
+# start it from the Actions tab. It needs the ANTHROPIC_API_KEY repository secret.
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Plugin directory to evaluate ("." with eval_dir "evals" for the cross-plugin cases)
+        default: ./plugins/laa
+      eval_dir:
+        description: Eval directory, only for the cross-plugin cases ("evals")
+        default: ""
+      case:
+        description: One case name (required with target "."), or empty for the whole suite
+        default: ""
+      runs:
+        description: Runs per case
+        default: "1"
+      model:
+        description: Model the cases run on
+        default: claude-sonnet-5-5
+      judge_model:
+        description: Model that grades the llm graders
+        default: claude-sonnet-5-5
+      threshold:
+        description: Score a case needs to pass
+        default: "0.8"
+      max_cost_usd:
+        description: Stop the run at this cost
+        default: "20"
+      extra_args:
+        description: Extra flags, for example "--scaffold --allow-tools Write" for cases with fixture repos
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Install the sandbox backend
+        # Cases that grant Bash run under Claude Code's OS sandbox, which needs these two on Linux.
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap socat
+      - name: Run evals
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Inputs reach the script through the environment, never through ${{ }} inside it.
+          TARGET: ${{ inputs.target }}
+          EVAL_DIR: ${{ inputs.eval_dir }}
+          CASE: ${{ inputs.case }}
+          RUNS: ${{ inputs.runs }}
+          MODEL: ${{ inputs.model }}
+          JUDGE_MODEL: ${{ inputs.judge_model }}
+          THRESHOLD: ${{ inputs.threshold }}
+          MAX_COST_USD: ${{ inputs.max_cost_usd }}
+          EXTRA_ARGS: ${{ inputs.extra_args }}
+        run: |
+          [ -n "$ANTHROPIC_API_KEY" ] || { echo "::error::set the ANTHROPIC_API_KEY repository secret"; exit 1; }
+          set -- "$TARGET" --trust-plugin --json results.json --no-publish \
+            --runs "$RUNS" --model "$MODEL" --judge-model "$JUDGE_MODEL" \
+            --threshold "$THRESHOLD" --max-cost-usd "$MAX_COST_USD"
+          [ -z "$EVAL_DIR" ] || set -- "$@" --eval-dir "$EVAL_DIR"
+          [ -z "$CASE" ] || set -- "$@" --case "$CASE"
+          # EXTRA_ARGS is split into words on purpose: it holds several flags.
+          # shellcheck disable=SC2086
+          claude plugin eval "$@" $EXTRA_ARGS
+      - name: Show the results file
+        if: always()
+        run: |
+          [ -f results.json ] && cat results.json || echo "no results.json was written"

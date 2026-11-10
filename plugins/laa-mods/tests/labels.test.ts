@@ -21,7 +21,7 @@ async function world($: Engine, on: On) {
   on('skill.prompt', ($, e) => ({ text: e.text }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('agent.spawn', () => ({ model: 'claude-test', agentId: 'agent_test1' }))
-  await $.tool.call(bash('git status'))
+  await $.tool.call(bash('git switch -'))
   return { clock, handed }
 }
 

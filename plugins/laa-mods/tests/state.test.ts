@@ -34,7 +34,7 @@ async function world($: Engine, on: On, f: Fake = {}) {
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('session.end', ($, e) => ({ sessionId: e.sessionId }))
   on('agent.spawn', () => ({ model: 'claude-test', agentId: 'agent_test1' }))
-  await $.tool.call(bash('git status'))
+  await $.tool.call(bash('git switch -'))
   return { seen, clock, state, writes, written }
 }
 

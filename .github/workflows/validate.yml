@@ -12,8 +12,9 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # v7 of both run on Node 24; the runners removed Node 20, which v4 ran on.
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: Install Claude Code
@@ -53,6 +54,22 @@ jobs:
           for t in plugins/*/scripts/tests/*.test.sh; do
             sh "$t" || { echo "::error file=$t::hook test failed"; exit 1; }
           done
+      - name: Test mods
+        run: claude plugin test ./plugins/laa-mods
+      - name: Type-check mods
+        # Non-blocking while the published types lag the Claude Code build the mod targets (tsc reports errors in
+        # code that type-checks against a current local build). Drop continue-on-error once upstream catches up.
+        continue-on-error: true
+        run: |
+          # tsc reads the engine's declarations from .claude-plugin/types/claude-code/index.d.ts (tsconfig.json
+          # includes .claude-plugin/types). A local session writes them there; CI takes the published copy.
+          types=plugins/laa-mods/.claude-plugin/types/claude-code
+          mkdir -p "$types"
+          curl -fsSL https://raw.githubusercontent.com/anthropics/claude-code/main/mods/types/claude-code.d.ts -o "$types/index.d.ts" \
+            || { echo "::error file=plugins/laa-mods/tsconfig.json::could not download the mod types"; exit 1; }
+          grep -q "declare module 'claude-code'" "$types/index.d.ts" \
+            || { echo "::error file=plugins/laa-mods/tsconfig.json::the downloaded mod types declare no 'claude-code' module"; exit 1; }
+          npx -y -p typescript tsc -p plugins/laa-mods
       - name: Test workflow reports
         run: node --test "plugins/laa/tests/*.test.mjs"
       - name: Check the laa-mods step and phase tables match the skills and workflows
@@ -80,3 +97,31 @@ jobs:
               exit 1
             fi
           done
+      - name: Check copied workflow helpers and agent sections match
+        run: |
+          # Workflows can't import and agents can't include, so these blocks are copied: spawn(), render(), and
+          # fromText() into every workflow, orOpus() into the ones that pin `fable`, and the "Code intelligence"
+          # section into the agents that query a code graph.
+          fail=0
+          # same <label> <awk program> <files>: the block the program prints is identical in every file that has one.
+          same() {
+            label=$1
+            prog=$2
+            shift 2
+            first=""
+            for f in "$@"; do
+              block=$(awk "$prog" "$f")
+              [ -n "$block" ] || continue
+              if [ -z "$first" ]; then
+                first=$f
+                ref=$block
+              elif [ "$block" != "$ref" ]; then
+                echo "::error file=$f::$label differs from $first"
+                fail=1
+              fi
+            done
+          }
+          same 'spawn/render/fromText' '/^const degraded = /{p=1} /^const fromText = /{last=1} p{print} p&&last&&/^}$/{exit}' plugins/laa/workflows/*.js
+          same 'orOpus' '/^const orOpus = /{p=1} p{print} p&&/^}$/{exit}' plugins/laa/workflows/*.js
+          same "'Code intelligence'" '/^## Code intelligence/{p=1;print;next} p&&/^## /{exit} p' plugins/laa/agents/*.md
+          exit $fail
