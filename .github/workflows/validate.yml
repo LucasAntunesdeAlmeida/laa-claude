@@ -94,3 +94,31 @@ jobs:
               exit 1
             fi
           done
+      - name: Check copied workflow helpers and agent sections match
+        run: |
+          # Workflows can't import and agents can't include, so these blocks are copied: spawn(), render(), and
+          # fromText() into every workflow, orOpus() into the ones that pin `fable`, and the "Code intelligence"
+          # section into the agents that query a code graph.
+          fail=0
+          # same <label> <awk program> <files>: the block the program prints is identical in every file that has one.
+          same() {
+            label=$1
+            prog=$2
+            shift 2
+            first=""
+            for f in "$@"; do
+              block=$(awk "$prog" "$f")
+              [ -n "$block" ] || continue
+              if [ -z "$first" ]; then
+                first=$f
+                ref=$block
+              elif [ "$block" != "$ref" ]; then
+                echo "::error file=$f::$label differs from $first"
+                fail=1
+              fi
+            done
+          }
+          same 'spawn/render/fromText' '/^const degraded = /{p=1} /^const fromText = /{last=1} p{print} p&&last&&/^}$/{exit}' plugins/laa/workflows/*.js
+          same 'orOpus' '/^const orOpus = /{p=1} p{print} p&&/^}$/{exit}' plugins/laa/workflows/*.js
+          same "'Code intelligence'" '/^## Code intelligence/{p=1;print;next} p&&/^## /{exit} p' plugins/laa/agents/*.md
+          exit $fail
