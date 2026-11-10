@@ -4,7 +4,7 @@ export const meta = {
   whenToUse: 'Called by /laa:fix for non-trivial bugs, or typed as /laa:investigate <bug description>. args: { bug, repro?, context?, angles?, thorough? }',
   phases: [
     { title: 'Investigate', detail: 'one investigator per angle' },
-    { title: 'Cluster', detail: 'merge duplicate hypotheses', model: 'opus' },
+    { title: 'Cluster', detail: 'merge duplicate hypotheses', model: 'fable' },
     { title: 'Verify', detail: 'skeptics try to refute each root cause' },
   ],
 }
@@ -33,6 +33,17 @@ const fromText = (raw, key) => {
     try { return JSON.parse(text) } catch (e) { /* not JSON: treat as plain text */ }
   }
   return text ? { [key]: text } : {}
+}
+
+// A stage pinned to `fable` reruns once on `opus` when it throws or comes back empty: accounts and providers
+// without Fable reject the call, and losing the stage would lose the run. A stage the user skips looks the
+// same from here, so it is rerun too.
+const orOpus = (prompt, opts) => {
+  const rerun = () => {
+    log(`${opts.label}: no result on ${opts.model}; rerunning on opus`)
+    return spawn(prompt, { ...opts, model: 'opus' })
+  }
+  return agent(prompt, opts).then(r => (r == null ? rerun() : r), rerun)
 }
 
 const DEFAULT_ANGLES = ['recent-changes', 'data-flow', 'config-env', 'concurrency', 'data-state']
@@ -118,11 +129,11 @@ if (!all.length) {
 
 // Barrier is intentional: clustering needs every angle's hypotheses at once.
 phase('Cluster')
-const clustered = await agent(
+const clustered = await orOpus(
   `${brief}\n\nThese hypotheses came from independent investigators. Merge ones describing the same root cause, ` +
   `drop any that do not explain the exact symptom, and return at most 5 clusters ordered by likelihood.\n\n` +
   JSON.stringify(all, null, 2),
-  { label: 'cluster', phase: 'Cluster', model: 'opus', effort: 'medium', schema: CLUSTERS })
+  { label: 'cluster', phase: 'Cluster', model: 'fable', effort: 'medium', schema: CLUSTERS })
 const clusters = (clustered && clustered.clusters) || []
 
 const LENSES = input.thorough
@@ -142,12 +153,14 @@ const classify = (vs, requested) => {
   return { status, confirmed, refuted, uncertain: votes.length - confirmed - refuted, errored: requested - votes.length, votes }
 }
 
+// Thorough runs (hard bugs: intermittent, concurrency, prod-only) verify on `fable`; see orOpus.
+const verify = input.thorough ? orOpus : spawn
 phase('Verify')
 const verified = await parallel(clusters.map((c, i) => () =>
   parallel(LENSES.map(lens => () =>
-    spawn(`${brief}\n\nCLAIMED ROOT CAUSE: ${c.rootCause}\nLOCATION: ${c.location}\nMECHANISM: ${c.mechanism}\n\n` +
+    verify(`${brief}\n\nCLAIMED ROOT CAUSE: ${c.rootCause}\nLOCATION: ${c.location}\nMECHANISM: ${c.mechanism}\n\n` +
       `Try to REFUTE this claim using the ${lens} lens.`,
-      { label: `verify:${i + 1}:${lens.split(':')[0]}`, phase: 'Verify', agentType: 'laa:verifier', ...(input.thorough && { effort: 'xhigh' }), schema: VERDICT })))
+      { label: `verify:${i + 1}:${lens.split(':')[0]}`, phase: 'Verify', agentType: 'laa:verifier', ...(input.thorough && { model: 'fable', effort: 'xhigh' }), schema: VERDICT })))
     .then(vs => {
       const v = classify(vs, LENSES.length)
       return { ...c, ...v, survives: v.status === 'confirmed' }
