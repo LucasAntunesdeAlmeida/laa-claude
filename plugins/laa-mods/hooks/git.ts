@@ -261,6 +261,10 @@ const gitDirs = (options: string) =>
     return m[0].startsWith('--git-dir') ? dir.replace(/[\\/]\.git[\\/]*$/, '') || '.' : dir
   })
 
+// How many directories one command's commits may be in before the guard stops following it. Each one costs the
+// guard a few git runs, and five cds that may have failed already make 32.
+export const MAX_COMMIT_DIRS = 32
+
 // Every directory a Bash or PowerShell command may run `git commit` in, relative to the session's directory
 // ('' for that directory itself); empty when it doesn't commit. It follows the cds before each commit, the
 // directory stack that ( { pushd and Push-Location save and ) } popd and Pop-Location restore, and each
@@ -268,14 +272,22 @@ const gitDirs = (options: string) =>
 // pushed), it keeps every directory the commit could be in, so the guard checks them all. In a Bash command,
 // text-only heredoc bodies don't count (`withoutHeredocs`). A string counts where it runs: what a shell -c or eval is
 // handed, and the $(…) and backticks in double quotes.
-export const commitDirs = (full: string, isBash = false, blanksHeredocs = isBash): string[] => {
+// Each cd that may have failed can double the list, so it stops at MAX_COMMIT_DIRS: null when a commit comes after
+// that point, or the commits are in more directories than that. The guard refuses such a command unchecked.
+export const commitDirs = (full: string, isBash = false, blanksHeredocs = isBash): string[] | null => {
   const command = isBash ? backticksAsSubshells(blanksHeredocs ? withoutHeredocs(full) : full) : full
   let dirs = ['']
   const stack: string[][] = []
   const seen = new Set(dirs)
   const out = new Set<string>()
+  // Whether the list was cut, so the directories from here on are no longer all of them; and whether a commit
+  // came after that.
+  let isCut = false
+  let isLost = false
   const go = (next: string[]) => {
-    dirs = [...new Set(next)]
+    const all = [...new Set(next)]
+    if (all.length > MAX_COMMIT_DIRS) isCut = true
+    dirs = all.slice(0, MAX_COMMIT_DIRS)
     for (const d of dirs) seen.add(d)
   }
   // Where the command the current match sits in starts, kept as the matches move forward.
@@ -295,11 +307,14 @@ export const commitDirs = (full: string, isBash = false, blanksHeredocs = isBash
       const runner = RUNS_STRING.exec(command.slice(Math.max(segment, at - 1000), at))
       const isShell = runner !== null && runner[2] === undefined && !/^(?:pwsh|powershell)$/i.test(runner[1] ?? '')
       const found = runner
-        ? commitDirs(inner, isShell, false)
+        ? [commitDirs(inner, isShell, false)]
         : dq !== undefined
-          ? substitutions(inner, isBash).flatMap(text => commitDirs(text, isBash))
+          ? substitutions(inner, isBash).map(text => commitDirs(text, isBash))
           : []
-      for (const d of found) for (const base of dirs) out.add(d === '' ? base : under(base, d))
+      for (const inside of found) {
+        if (inside === null || (isCut && inside.length > 0)) isLost = true
+        for (const d of inside ?? []) for (const base of dirs) out.add(d === '' ? base : under(base, d))
+      }
     } else if (to !== undefined) {
       if (push !== undefined) stack.push(dirs)
       const target = unquote(to)
@@ -314,10 +329,13 @@ export const commitDirs = (full: string, isBash = false, blanksHeredocs = isBash
       go(stack.pop() ?? [...dirs, ''])
     } else if (commit !== undefined) {
       const extra = gitDirs(globals ?? '')
+      if (isCut) isLost = true
       for (const d of dirs) out.add(extra.reduce(under, d))
     }
+    // Nothing more to learn once a commit is lost, and a long command stops costing a step each.
+    if (isLost) return null
   }
-  return [...out]
+  return out.size > MAX_COMMIT_DIRS ? null : [...out]
 }
 
 // git subcommands that move HEAD, the branches, or the refs, and so change what the band shows.

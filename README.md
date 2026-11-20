@@ -144,6 +144,8 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
   - files git ignores, laa's local state (`.claude/laa/local/`), and files outside the repo.
 
   The refusal tells Claude to create a task branch or a worktree, and a toast shows it on screen. To work on the default branch on purpose, type `/laa-allow-main`, which allows it for the session; type it again to block again.
+
+  For a commit, the guard follows the command's `cd`s to every directory the commit could run in, and checks each. A `cd` followed by `||` may have failed, so it adds directories instead of replacing them. Past 32 directories the guard stops following and refuses the command on any branch, with a message to run the commit in a command of its own.
 - **Learnings pane**: `/laa-learnings [repo path]` opens a pane listing the open entries of `.claude/laa/learnings.md`: title, scope, kind, target, signal, and proposal. A bar and its legend count them by scope (`▓ local 3 · ░ generic 2`), and with more than three entries a filter shows one scope at a time.
   - **Reject** marks an entry `status: rejected (dismissed in the laa-learnings pane)`, so `/laa:evolve` won't propose it again. The pane checks that the entry hasn't changed since it loaded before writing.
   - **Evolve** (hotkey `e`) puts `/laa:evolve` in the prompt for you to send.

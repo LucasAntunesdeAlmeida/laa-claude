@@ -300,6 +300,74 @@ describe('default-branch guard', () => {
     expect(denied(await $.tool.call(bash('cd C:/nope || true; git commit -m x')))).toBe(true)
     expect(denied(await $.tool.call(bash('cd C:/other && cd - && git commit -m x')))).toBe(true)
     expect(denied(await $.tool.call(bash('cd - && git commit -m x')))).toBe(true)
+    // An exit after the || changes nothing: the old directory is still checked.
+    expect(denied(await $.tool.call(bash('cd C:/other || exit 1; git commit -m x')))).toBe(true)
+  })
+
+  // `n` cds that may each have failed, which doubles the directories a later commit could be in.
+  const steps = (n: number, or = 'exit 1') => Array.from({ length: n }, (_, i) => `cd d${i} || ${or}`).join('; ')
+
+  test('follows a commit through 32 directories, and refuses one it would have to follow further', async ($, on) => {
+    const seen = fakeRepo(on, { branch: 'feat/export' })
+    // Five such cds make 32 directories: each is checked, and none is guarded.
+    expect(denied(await $.tool.call(bash(`${steps(5)}; git commit -m x`)))).toBe(false)
+    // A sixth makes 64: refused unchecked, on a task branch too.
+    const before = seen.git.length
+    const res = await $.tool.call(bash(`${steps(6)}; git commit -m x`))
+    expect(denied(res)).toBe(true)
+    expect(String(res.deny)).toContain('more than 32 directories')
+    expect(seen.toasts.some(t => t.includes('too many directory changes'))).toBe(true)
+    expect(seen.git.length - before).toBeLessThan(5)
+    // Sixteen made 65,536 directories, each checked with git.
+    const at16 = seen.git.length
+    expect(denied(await $.tool.call(bash(`${steps(16)}; git commit -m x`)))).toBe(true)
+    expect(seen.git.length - at16).toBeLessThan(5)
+    // However the cds may fail, in either shell, and wherever the commit runs from.
+    expect(denied(await $.tool.call(bash(`${steps(6, 'true')}; git commit -m x`)))).toBe(true)
+    expect(denied(await $.tool.call(powershell(`${steps(6, 'true')}; git commit -m x`)))).toBe(true)
+    expect(denied(await $.tool.call(bash(`bash -c "${steps(6)}; git commit -m x"`)))).toBe(true)
+    expect(denied(await $.tool.call(bash(`${steps(6)}; bash -c "git commit -m x"`)))).toBe(true)
+    expect(denied(await $.tool.call(bash(`${steps(6)}; echo "$(git commit -m x)"`)))).toBe(true)
+  })
+
+  test('refuses commits spread over more than 32 directories', async ($, on) => {
+    fakeRepo(on, { branch: 'feat/export' })
+    const commits = (n: number) => Array.from({ length: n }, (_, i) => `git -C d${i} commit -m x`).join('; ')
+    expect(denied(await $.tool.call(bash(commits(32))))).toBe(false)
+    expect(denied(await $.tool.call(bash(commits(33))))).toBe(true)
+  })
+
+  test('a large command is refused without following every step', async ($, on) => {
+    const seen = fakeRepo(on, { branch: 'feat/export' })
+    const many = Array.from({ length: 2000 }, (_, i) => `cd d${i} || exit 1`).join('\n')
+    const before = seen.git.length
+    expect(denied(await $.tool.call(bash(`echo '${'x'.repeat(60000)}'\n${many}\ngit commit -m x`)))).toBe(true)
+    expect(seen.git.length - before).toBeLessThan(5)
+  })
+
+  test('losing count only matters to a commit that comes after it', async ($, on) => {
+    fakeRepo(on, { branch: 'feat/export' })
+    expect(denied(await $.tool.call(bash(`${steps(16)}; make`)))).toBe(false)
+    expect(denied(await $.tool.call(bash(`git commit -m x; ${steps(16)}`)))).toBe(false)
+  })
+
+  test('a commit on the default branch before the count is lost gets the usual refusal', async ($, on) => {
+    fakeRepo(on)
+    const res = await $.tool.call(bash(`git commit -m x; ${steps(16)}`))
+    expect(denied(res)).toBe(true)
+    expect(String(res.deny)).toContain('default branch `main`')
+  })
+
+  test("with guard: off, a commit the guard can't follow runs", { options: { guard: 'off' } }, async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash(`${steps(16)}; git commit -m x`)))).toBe(false)
+  })
+
+  test("after /laa-allow-main, a commit the guard can't follow runs", async ($, on) => {
+    fakeRepo(on)
+    expect(denied(await $.tool.call(bash(`${steps(16)}; git commit -m x`)))).toBe(true)
+    await $.command.run(allowMainRun)
+    expect(denied(await $.tool.call(bash(`${steps(16)}; git commit -m x`)))).toBe(false)
   })
 
   test('lets the worktree flow through: cd into the worktree, then commit', async ($, on) => {

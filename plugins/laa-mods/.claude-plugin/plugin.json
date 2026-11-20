@@ -1,6 +1,6 @@
 {
   "name": "laa-mods",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Mods for the laa toolkit: blocks file changes and commits on the default branch, tracks the running laa pipeline above the prompt, in the footer, the spinner, and the prompt hint, draws a stepper, engine cards, and framed closing reports, adds /laa-help, panes to triage learnings and review findings, and next-step suggestions. Set visuals to minimal for the plain 0.3.0 drawing.",
   "author": {
     "name": "Lucas Almeida"

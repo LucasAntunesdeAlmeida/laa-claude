@@ -7,7 +7,7 @@ import { cardFor, dropCard, ended, engineCard, finished, launched, noticeOf, pha
 import type { Cards, Spawn } from './engines'
 import {
   BUILD_JOURNAL, changesRepo, commitDirs, countOpenHigh, countOpenLearnings, ENGINES, gateOfQuestions, HELP, isInGit, isPaused,
-  isPersonAnswer, isUnder, journalFile, laaSkillOf, LOCAL_DIR, nextActionOf, normalize, parentOf, parseFindings, parseJournal,
+  isPersonAnswer, isUnder, journalFile, laaSkillOf, LOCAL_DIR, MAX_COMMIT_DIRS, nextActionOf, normalize, parentOf, parseFindings, parseJournal,
   parseLearnings, PIPELINES, progressOf, rejectLearning, resolveFrom, REVIEW_FILE, setFindingStatus, slash, stepNumbersOf, stillOpen,
   suggestionFor, TRACKED,
 } from './git'
@@ -106,6 +106,17 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 function blocked($: Engine, repo: Where, what: string, short: string) {
   $.ui.toast(`${PRE}blocked ${short} on ${repo.branch}. Create a task branch first.`)
   return { deny: denial(repo, what) }
+}
+
+// Refuses a command whose commits could be in more directories than the guard follows: it can't be checked.
+function unfollowed($: Engine) {
+  $.ui.toast(`${PRE}blocked a commit after too many directory changes to check.`)
+  return {
+    deny:
+      `laa: this command could commit in more than ${MAX_COMMIT_DIRS} directories (each cd that may have failed adds more), ` +
+      "so the default-branch guard can't check it and it did not run. Run the commit in a command of its own, " +
+      "such as `cd <dir> && git commit ...`; don't work around this block.",
+  }
 }
 
 // A git run that couldn't start or overran its time.
@@ -749,7 +760,11 @@ export const register: Register = (on, options) => {
   // A commit through Bash (Git Bash on Windows) or the PowerShell tool.
   on('tool.call', { tool: ['Bash', 'PowerShell'] }, async ($, e, next) => {
     const dirs = commitDirs(e.command, e.tool === 'Bash')
-    if (dirs.length > 0) {
+    if (dirs === null) {
+      // More directories than the guard follows. Any of them could be guarded, so the command is refused
+      // wherever the guard is on at all.
+      if (guard !== 'off' && !(await read($, allowMain))) return unfollowed($)
+    } else if (dirs.length > 0) {
       const cwd = await $.session.cwd()
       // Every commit in the command, and every directory one could run in: refused if any is guarded.
       for (const dir of dirs) {
@@ -759,7 +774,7 @@ export const register: Register = (on, options) => {
     }
     const ran = await next(e)
     // A pipeline that committed has done work worth a retro.
-    if (dirs.length > 0 && !('deny' in ran) && !ran.isError) {
+    if ((dirs === null || dirs.length > 0) && !('deny' in ran) && !ran.isError) {
       await update($, pipeline, p => (p ? { ...p, hasCommitted: true } : p))
     }
     // Branch switches and commits change what the band shows; read-only git commands don't.
