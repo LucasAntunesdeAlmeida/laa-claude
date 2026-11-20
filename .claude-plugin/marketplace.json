@@ -69,7 +69,7 @@
     {
       "name": "laa-mods",
       "source": "./plugins/laa-mods",
-      "description": "Mods (TypeScript function hooks): blocks edits and commits on the default branch, tracks the running laa pipeline above the prompt and in the footer, /laa-help, panes for open learnings and review findings, and next-step suggestions.",
+      "description": "Mods (TypeScript function hooks): blocks edits and commits on the default branch, tracks the running laa pipeline above the prompt (with a stepper), in the footer, the spinner, and the prompt hint, draws engine cards and framed closing reports, /laa-help, panes for open learnings and review findings with code, links, and filters, and next-step suggestions. The visuals option (full by default) set to minimal keeps the text-only 0.3.0 drawing.",
       "category": "development"
     }
   ]

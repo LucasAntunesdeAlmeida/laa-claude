@@ -186,4 +186,4 @@ const report = render([
   ...(unverified.length ? ['', `**▲ ${unverified.length} unverified** · verifiers couldn't settle these; check them by hand`] : []),
   ...unverified.map(f => `${line(f)} · ${why(f)}`),
 ])
-return { confirmed, unverified, refutedCount, report, degraded }
+return { report, degraded, confirmed, unverified, refutedCount }

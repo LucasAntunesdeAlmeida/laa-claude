@@ -135,7 +135,7 @@ if (!batches || !batches.length) {
         ...batches.map(b => `- \`${b.id}\` ${b.files.length} files: ${b.files.slice(0, 3).join(', ')}${b.files.length > 3 ? ', …' : ''}`),
       ]
       : ['**✓ No sites found** · nothing left to migrate'])
-    return { change: input.change, siteCount, batches, report, degraded }
+    return { report, degraded, change: input.change, siteCount, batches }
   }
 }
 
@@ -184,4 +184,4 @@ const report = render([
     : `**✓ ${n}/${n} batches verified**`,
   ...summary.map((r, i) => ok(r) ? `- ✓ \`${r.impl.branch}\` ${batches[i].files.length} files` : `- ✗ ${r.batch} ${reason(r)}`),
 ])
-return { change: input.change, base, results: summary, needsAttention, report, degraded }
+return { report, degraded, change: input.change, base, results: summary, needsAttention }

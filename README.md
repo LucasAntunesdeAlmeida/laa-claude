@@ -19,7 +19,7 @@ A Claude Code plugin marketplace for backend developers, tech leads, and archite
 | `laa-docs` | Practice pack, any language: README/onboarding conventions skill + `docs-reviewer` agent (catches docs drift) |
 | `laa-docker` | Practice pack, any language: Docker-first local development skill (dependencies, tests, and debugging in containers when Docker is available) + `docker-reviewer` agent (catches local-environment drift) |
 | `laa-api` | Practice pack, any language: API docs and tests skill (OpenAPI as the contract, a Bruno collection as runnable examples and tests, run in CI) + `api-reviewer` agent (catches drift between code, spec, and collection) |
-| `laa-mods` | Mods (TypeScript function hooks): a default-branch guard, a pipeline tracker above the prompt, `/laa-help`, panes for learnings and review findings, and next-step suggestions. Opt-in, see [Mods](#mods-laa-mods) |
+| `laa-mods` | Mods (TypeScript function hooks): a default-branch guard, a pipeline tracker above the prompt with a stepper, engine cards and framed closing reports in the transcript, `/laa-help`, panes for learnings and review findings, and next-step suggestions. Opt-in, see [Mods](#mods-laa-mods) |
 
 **Stack packs** add language rules, and their reviewers join reviews of matching files. **Practice packs** add language-agnostic rules, and their reviewers join every review.
 
@@ -144,7 +144,7 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
   - files git ignores, laa's local state (`.claude/laa/local/`), and files outside the repo.
 
   The refusal tells Claude to create a task branch or a worktree, and a toast shows it on screen. To work on the default branch on purpose, type `/laa-allow-main`, which allows it for the session; type it again to block again.
-- **Learnings pane**: `/laa-learnings [repo path]` opens a pane listing the open entries of `.claude/laa/learnings.md`: title, scope, kind, target, signal, and proposal.
+- **Learnings pane**: `/laa-learnings [repo path]` opens a pane listing the open entries of `.claude/laa/learnings.md`: title, scope, kind, target, signal, and proposal. A bar and its legend count them by scope (`▓ local 3 · ░ generic 2`), and with more than three entries a filter shows one scope at a time.
   - **Reject** marks an entry `status: rejected (dismissed in the laa-learnings pane)`, so `/laa:evolve` won't propose it again. The pane checks that the entry hasn't changed since it loaded before writing.
   - **Evolve** (hotkey `e`) puts `/laa:evolve` in the prompt for you to send.
 
@@ -156,9 +156,25 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
   - open high review findings (`→ /laa-findings`), open learnings (`→ /laa:evolve` at 3 or more), and a missing or stale project map (`→ /laa:adopt` at 50+ commits).
 
   The map nudge has a **mute** button (hotkey `m`, after ctrl+x tab focuses the band). It mutes the nudge for that repo, until the map goes 100 commits stale.
+- **Stepper**: while a run is in progress or paused, the band gets a second row with every step of its skill: `✓ context ━ ✓ size ━ ✓ repro ━ ● investigate ━ ○ decide ━ ○ fix ━ ○ review ━ ○ retro`.
+  - `✓` is a step done, `●` the step running, `★` the step a gate waits at, and `○` a step to come or the one a paused run stopped at. A step the run skipped keeps its label and gets no mark.
+  - A narrow window shortens it, down to `● 3/7 investigate`.
+  - The step tables live in the plugin, and a test checks them against the skills' own headings.
 - **Footer label**: the prompt footer's mode labels show the run too, as `laa:fix 3/7` or `laa:feature ★`.
+- **Spinner, prompt hint, and turn line**: the same run in three more places, in the same words as the band and the footer.
+  - The spinner's line: `laa:fix · Investigate 3/7`, `laa:fix · engine investigate · Verify` while a workflow runs, or `laa:feature · ★ Approve the plan?` at a gate. A message Claude Code sets itself (while compacting, say) is left alone.
+  - The hint under the prompt, while a gate waits on you: `★ waiting on you: Approve the plan?`. Once you answer, the run shows its step again, here and in the band, while Claude works on the answer.
+  - The line that closes a turn: ` · laa:fix 3/7` after the duration, on turns that end mid-run (at a gate, while a workflow runs, or stopped without a report). The turn that closes a run with its report gets none.
+- **Engine card**: the transcript row of a laa workflow gets a card under it.
+  - While it runs: the engine and how many agents it started, its phases (`✓ Investigate ━ ✓ Cluster ━ ● Verify`), and the agents by role (`investigate ×5 · cluster · verify ×9`).
+  - When it ends: the first line of its report, or `✗ failed`. A phase no agent worked in keeps its label and gets no mark.
+- **Closing report**: the block a laa run ends with (its `✓` or `✗` status line, then the **Next** list) is drawn in a frame, in the theme's success color for `✓`.
+  - A report from before a `/resume` or a `/clear` is framed too, when its **Next** list names a laa command.
+  - Red is used once on screen at most. A blocked default branch in the band has it; otherwise the newest `✗` report does. Older `✗` reports, a failed engine, and CRIT and HIGH findings are in the warning color.
 - **`/laa-help`**: every laa command grouped by job (Understand, Change, Check, Continue, Set up, Learn), the engines, this repo's state, and the one command worth running next. It answers instantly, with no model turn.
 - **Findings pane**: `/laa-findings [repo path]` lists the open findings `/laa:review` saved to `.claude/laa/local/last-review.md`.
+  - A bar and its legend count them by severity (`█ CRIT 1 · ▓ HIGH 2 · ▒ MED 4 · ░ LOW 1`), and with more than three findings a filter shows all, CRIT and HIGH, MED, or LOW.
+  - Each finding shows the code around its line, from files in the repo under 1 MB. In the terminal its location (`src/export/csv.go:14`) is a link to the file, unless the file is of a type your system would run when opened (a script, a program, a shortcut).
   - **Fix** puts a self-contained fix request in the prompt for you to send, and **Fix all CRIT and HIGH** (hotkey `f`) does the same for every high finding.
   - **Dismiss** marks a finding `status: dismissed`.
 - **Next step**: when a laa run's closing report has a laa command in its **Next** list, the prompt box suggests the first one (Tab to take it), once.
@@ -168,9 +184,14 @@ Exploration works better with a code graph. The toolkit uses [graphify](https://
   - It replaces Claude Code's own next-prompt guess only while the nudge is due.
 - **Learning logged**: when a turn adds entries to `.claude/laa/learnings.md`, through `/laa:retro` or a captured correction, a toast says how many it added, once, at the end of the turn.
 
-The guard's scope is the `guard` option in `/config`: `adopted` (default: repos where `.claude/laa/` holds `learnings.md` or `project-map.md`), `always` (every git repo), or `off`.
+Two options in `/config`:
 
-**Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it and `claude plugin test ./plugins/laa-mods` runs its tests. CI has no session to write the declarations, so it downloads the published copy (`mods/types/claude-code.d.ts` in the `anthropics/claude-code` repo) to `plugins/laa-mods/.claude-plugin/types/claude-code/index.d.ts`. That copy can lag behind the Claude Code release the mod is written against, so the CI type-check is non-blocking until it catches up; run tsc locally before merging. The mods API still changes between Claude Code releases, so recheck the mod after an upgrade. Mod hooks don't run in Desktop WSL sessions, and nothing is drawn in `claude -p`, the Agent SDK, or cloud sessions; that's why the rest of the toolkit doesn't depend on `laa-mods`.
+- `guard` is the guard's scope: `adopted` (default: repos where `.claude/laa/` holds `learnings.md` or `project-map.md`), `always` (every git repo), or `off`.
+- `visuals` is how much the plugin draws: `full` (default), or `minimal`, which keeps the text-only drawing of 0.3.0. Under `minimal` the band is one row, the footer label stays, the panes are plain lists (with CRIT and HIGH in red), and the stepper, the spinner, hint, and turn-line labels, the engine card, and the report frame are off.
+
+What each surface draws differs a little: the bars are terminal-only (the legend says the same everywhere), and the band and its stepper are on the terminal and the desktop. A surface that draws no select control gets no filter, and its panes list everything.
+
+**Developing it:** `claude --plugin-dir ./plugins/laa-mods` loads it and writes its type declarations to `plugins/laa-mods/.claude-plugin/types/` (gitignored). Then `npx -p typescript tsc -p plugins/laa-mods` type-checks it, `claude plugin test ./plugins/laa-mods` runs its tests, and `node --test "plugins/laa-mods/tests/drift/*.test.mjs"` (Node 22.18 or later) checks its step and phase tables against the skills and workflows. CI has no session to write the declarations, so it downloads the published copy (`mods/types/claude-code.d.ts` in the `anthropics/claude-code` repo) to `plugins/laa-mods/.claude-plugin/types/claude-code/index.d.ts`. That copy can lag behind the Claude Code release the mod is written against, so the CI type-check is non-blocking until it catches up; run tsc locally before merging. The mods API still changes between Claude Code releases, so recheck the mod after an upgrade. Mod hooks don't run in Desktop WSL sessions, and nothing is drawn in `claude -p`, the Agent SDK, or cloud sessions; that's why the rest of the toolkit doesn't depend on `laa-mods`.
 
 ## Spinner tips (optional)
 To learn the toolkit while Claude works, add these to `~/.claude/settings.json`. They join Claude Code's own tips under a `laa` label, and each waits three sessions before it shows again. Tip objects and `label` only work from user settings; project settings take plain strings only.

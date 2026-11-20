@@ -48,4 +48,5 @@ claude plugin eval ./plugins/laa --runs 1 --no-publish
 node --test "plugins/laa/tests/*.test.mjs"   # workflow scripts
 claude plugin test ./plugins/laa-mods        # mod tests
 npx -p typescript tsc -p plugins/laa-mods    # mod types; load it once with --plugin-dir first
+node --test "plugins/laa-mods/tests/drift/*.test.mjs"   # mod step and phase tables against the skills and workflows
 ```

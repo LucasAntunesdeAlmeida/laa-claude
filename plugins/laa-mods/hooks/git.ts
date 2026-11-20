@@ -55,6 +55,11 @@ export const isUnder = (file: string, dir: string) => {
   return norm(file).startsWith(`${norm(dir).replace(/\/+$/, '')}/`)
 }
 
+// Whether a file under `dir` is inside a `.git` directory, however its case is spelled: a file system
+// that ignores case opens `.GIT/config` as git's own.
+export const isInGit = (file: string, dir: string) =>
+  slash(file).slice(slash(dir).replace(/\/+$/, '').length).split('/').some(part => part.toLowerCase() === '.git')
+
 const unquote = (s: string) => s.replace(/^(["'])(.*)\1$/, '$2')
 
 // `dir` taken from `base`: a relative one goes under it.
@@ -432,8 +437,10 @@ export const parseJournal = (text: string): Journal | null => {
 // `**laa:<skill>** · …` (mode), `**▸ n/last · Title**` (step), `**★ Question**` (gate), and `**Next**` (the closing report).
 export type Progress = { skill: string | null; step: Step | null; gate: string | null; isClosing: boolean }
 
+const STEP_LINE = /\*\*▸ (\d+)\/(\d+) · ([^*\n]+?)\*\*/g
+
 export const progressOf = (text: string): Progress => {
-  const steps = [...text.matchAll(/\*\*▸ (\d+)\/(\d+) · ([^*\n]+?)\*\*/g)]
+  const steps = [...text.matchAll(STEP_LINE)]
   const last = steps[steps.length - 1]
   const gates = [...text.matchAll(/^\*\*★ ([^*\n]+?)\*\*/gm)]
   return {
@@ -445,6 +452,9 @@ export const progressOf = (text: string): Progress => {
   }
 }
 
+// The number of every step line in a block, in the order printed: one block may pass several steps.
+export const stepNumbersOf = (text: string): number[] => [...text.matchAll(STEP_LINE)].map(m => Number(m[1]))
+
 // The first laa command in a closing report's Next list (`/laa:retro`, `/laa-findings`), if it has one.
 export const nextActionOf = (text: string) => {
   const at = text.search(/^\*\*Next\*\*\s*$/m)
@@ -455,6 +465,16 @@ export const nextActionOf = (text: string) => {
 // The ★ question among an AskUserQuestion call's questions, without the star.
 export const gateOfQuestions = (questions: readonly { question: string }[]) =>
   questions.map(q => q.question.trim()).find(q => q.startsWith('★'))?.replace(/^★\s*/, '') ?? null
+
+// The origins of a prompt the person sent themselves: typed at the terminal, through Remote Control, or as
+// the SDK host. A task notification, a schedule, another session, and the engine's own follow-ups are not.
+const OWN_PROMPTS = ['composer', 'bridge', 'sdk']
+
+// Whether a conversation row is the person answering: a prompt of their own, or their answer to an
+// AskUserQuestion dialog (the tool's result row).
+export const isPersonAnswer = (door: string, origin: { kind: string; tool?: string }) =>
+  (door === 'prompt' && OWN_PROMPTS.includes(origin.kind)) ||
+  (door === 'tool-result' && origin.kind === 'tool' && origin.tool === 'AskUserQuestion')
 
 // Every laa command by the job it does, for /laa-help. CI checks that each laa skill is listed.
 export const HELP: readonly { group: string; items: readonly (readonly [string, string])[] }[] = [

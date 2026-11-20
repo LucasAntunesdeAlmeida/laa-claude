@@ -1,7 +1,7 @@
 {
   "name": "laa-mods",
-  "version": "0.4.3",
-  "description": "Mods for the laa toolkit: blocks file changes and commits on the default branch, tracks the running laa pipeline above the prompt and in the footer, /laa-help, panes to triage learnings and review findings, and next-step suggestions.",
+  "version": "0.5.0",
+  "description": "Mods for the laa toolkit: blocks file changes and commits on the default branch, tracks the running laa pipeline above the prompt, in the footer, the spinner, and the prompt hint, draws a stepper, engine cards, and framed closing reports, adds /laa-help, panes to triage learnings and review findings, and next-step suggestions. Set visuals to minimal for the plain 0.3.0 drawing.",
   "author": {
     "name": "Lucas Almeida"
   },
@@ -17,6 +17,13 @@
       "description": "Where to block edits and commits on the default branch: repos adopted by laa (.claude/laa/ exists), every git repo, or nowhere.",
       "default": "adopted",
       "options": ["adopted", "always", "off"]
+    },
+    "visuals": {
+      "type": "string",
+      "title": "Visuals",
+      "description": "How much laa draws: full adds the stepper under the band, engine and report cards, the run in the spinner and the prompt hint, and the visual panes; minimal keeps the band, the footer, and the panes exactly as 0.3.0 drew them.",
+      "default": "full",
+      "options": ["full", "minimal"]
     }
   }
 }

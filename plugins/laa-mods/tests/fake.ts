@@ -19,7 +19,7 @@ export type Fake = {
   root?: string
   // The repo is a git worktree of this main checkout (whose .git is the common git directory).
   worktreeOf?: string
-  // Symbolic links: the link's path, and where it leads.
+  // Symbolic links to directories: the link's absolute path, and where it leads.
   links?: Record<string, string>
   // How git fails: it isn't there (every run rejects), or it starts (`git --version` answers) but every
   // other run times out (and rejects).
@@ -30,6 +30,18 @@ export type Fake = {
   isFsDown?: boolean
   // Runs inside every tool call the plugin lets through, before the tool answers: what a test reads mid-call.
   duringTool?: ($: EngineInterface, e: { tool: string }) => Promise<void>
+  // What a tool the plugin lets through answers, by the tool's name; 'ran' unless given.
+  results?: Record<string, unknown>
+  // The person's theme, as the settings menu lists it; with none the menu can't be read.
+  theme?: string
+  // Sizes in bytes of files too large to write out in a test, by their path relative to the repo.
+  sizes?: Record<string, number>
+  // Runs inside every read before it answers, with the path relative to the repo: how a test makes a read slow.
+  beforeRead?: (path: string) => Promise<void>
+  // Symbolic links to files in the repo, by their path relative to it: where each lands (an absolute path) and the text there.
+  linkedFiles?: Record<string, { to: string; text: string }>
+  // Where the repo's root really is, when the root as git names it is itself reached through a link.
+  realRoot?: string
 }
 
 export const ROOT = 'C:/r'
@@ -60,8 +72,14 @@ export function fakeRepo(on: On, f: Fake = {}) {
   if (isAdopted) dirs.add(`${root}/.claude/laa`).add(LEARNINGS)
   if (f.mapAge !== undefined) dirs.add(`${root}/.claude/laa/project-map.md`)
   const texts = new Map<string, string>()
-  if (f.learnings !== undefined) texts.set(LEARNINGS, f.learnings)
-  for (const [path, text] of Object.entries(f.files ?? {})) texts.set(/^([A-Z]:)?\//.test(path) ? path : `${root}/${path}`, text)
+  // How many times each file's text has changed, which is its age: an edit shows in the file's `mtimeMs`.
+  const ages = new Map<string, number>()
+  const put = (path: string, text: string) => {
+    if (texts.get(path) !== text) ages.set(path, (ages.get(path) ?? 0) + 1)
+    texts.set(path, text)
+  }
+  if (f.learnings !== undefined) put(LEARNINGS, f.learnings)
+  for (const [path, text] of Object.entries(f.files ?? {})) put(/^([A-Z]:)?\//.test(path) ? path : `${root}/${path}`, text)
   if (f.worktreeOf) dirs.add(f.worktreeOf)
 
   const ok = (stdout = '') => ({ exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false })
@@ -76,13 +94,21 @@ export function fakeRepo(on: On, f: Fake = {}) {
 
   mock.store(on, f.store)
   on('session.cwd', () => ({ value: f.cwd ?? root }))
-  on('fs.exists', ($, e) => (f.isFsDown ? { deny: 'EIO' } : { value: exists(e.path) }))
-  on('fs.stat', ($, e) => {
-    if (!exists(e.path)) return { deny: `ENOENT: ${e.path}` }
-    const isLink = real(e.path) !== norm(e.path)
-    const stat = { kind: dirs.has(real(e.path)) ? ('dir' as const) : ('file' as const), size: 0, mtimeMs: 0, isLink }
-    return { value: e.resolve ? { ...stat, realPath: real(e.path) } : stat }
-  })
+  // Where a file link leads: its target, which holds the link's text.
+  const fileLinks = new Map<string, string>()
+  for (const [path, link] of Object.entries(f.linkedFiles ?? {})) {
+    fileLinks.set(`${root}/${path}`, norm(link.to))
+    put(norm(link.to), link.text)
+  }
+  // Where a path lands: a file link's target, else the path with its directory links followed.
+  const landing = (path: string) => fileLinks.get(norm(path)) ?? real(path)
+  // Where a path lands, as `realPath` spells it: under `realRoot` for what the repo itself holds.
+  const realOf = (path: string) => {
+    const at = landing(path)
+    const isInRepo = at === root || at.startsWith(`${root}/`)
+    return f.realRoot !== undefined && isInRepo ? f.realRoot + at.slice(root.length) : at
+  }
+  on('fs.exists', ($, e) => (f.isFsDown ? { deny: 'EIO' } : { value: dirs.has(real(e.path)) || texts.has(landing(e.path)) }))
   // The files as the plugin last wrote them, and every toast it showed.
   const seen = {
     get learnings() {
@@ -90,14 +116,55 @@ export function fakeRepo(on: On, f: Fake = {}) {
     },
     file: (path: string) => texts.get(`${root}/${path}`) ?? '',
     // What a tool the plugin let through would have written.
-    setFile: (path: string, text: string) => void texts.set(`${root}/${path}`, text),
+    setFile: (path: string, text: string) => put(`${root}/${path}`, text),
     toasts: [] as string[],
     // Every git command the plugin ran, as `<cwd>: <args>`.
     git: [] as string[],
+    // Every path the plugin read or asked the size of, in order, relative to the repo where it is inside it.
+    reads: [] as string[],
+    stats: [] as string[],
   }
-  on('fs.read', ($, e) => ({ value: texts.get(norm(e.path)) ?? '' }))
+  // A path as the tests name it: relative to the repo ('.' for its root), whether spelled under the root or
+  // under `realRoot`; as given when it is outside both.
+  const relative = (path: string) => {
+    const p = norm(path)
+    for (const base of [root, ...(f.realRoot === undefined ? [] : [f.realRoot])]) {
+      if (p === base) return '.'
+      if (p.startsWith(`${base}/`)) return p.slice(base.length + 1)
+    }
+    return p
+  }
+  // A path as the files are kept: a `realRoot` spelling back under the root, a link followed.
+  const kept = (path: string) => {
+    const p = norm(path)
+    const isReal = f.realRoot !== undefined && (p === f.realRoot || p.startsWith(`${f.realRoot}/`))
+    return landing(isReal ? root + p.slice((f.realRoot ?? '').length) : p)
+  }
+  on('fs.read', async ($, e) => {
+    seen.reads.push(relative(e.path))
+    await f.beforeRead?.(relative(e.path))
+    return { value: texts.get(kept(e.path)) ?? '' }
+  })
+  // A file's size and age, a directory, and where either lands when asked; a path that is neither is left to
+  // the kit, which rejects it as a missing path is rejected.
+  on('fs.stat', ($, e, next) => {
+    seen.stats.push(relative(e.path))
+    const at = kept(e.path)
+    const isLink = fileLinks.has(norm(e.path)) || real(e.path) !== norm(e.path)
+    const where = { isLink, ...(e.resolve ? { realPath: realOf(at) } : {}) }
+    const text = texts.get(at)
+    if (text !== undefined) return { value: { kind: 'file' as const, size: f.sizes?.[relative(e.path)] ?? text.length, mtimeMs: ages.get(at) ?? 1, ...where } }
+    if (dirs.has(at)) return { value: { kind: 'dir' as const, size: 0, mtimeMs: 1, ...where } }
+    return next(e)
+  })
+  if (f.theme !== undefined) {
+    const theme = f.theme
+    on('config.list', () => ({
+      value: [{ key: 'theme', label: 'Theme', kind: 'choice' as const, value: theme, provider: { plugin: 'engine', tier: 'core' as const }, isLocked: false }],
+    }))
+  }
   on('fs.write', ($, e) => {
-    texts.set(norm(e.path), e.text)
+    put(norm(e.path), e.text)
     return { value: undefined }
   })
   on('ui.toast', ($, e) => {
@@ -127,6 +194,7 @@ export function fakeRepo(on: On, f: Fake = {}) {
   // The tool itself: reached only when the plugin lets the call through.
   on('tool.call', async ($, e) => {
     await f.duringTool?.($, e)
+    if (f.results?.[e.tool] !== undefined) return { result: f.results[e.tool] as never }
     // A workflow launches in the background; a run from a script file names it by the script's meta name.
     if (e.tool === 'Workflow') return { result: { status: 'async_launched', taskId: 'task-1', workflowName: e.name ?? 'laa:map-repo' } as never }
     return { result: 'ran' as never }
@@ -164,6 +232,22 @@ export const reply = (text: string, uuid = 'row-1') => ({
   uuid,
 })
 
+// A message the person typed and sent, as the session stores it.
+export const typed = (text: string, uuid = 'row-p1') => ({
+  message: { type: 'user' as const, role: 'user' as const, content: [{ type: 'text' as const, text }] },
+  door: 'prompt' as const,
+  origin: { kind: 'composer' as const },
+  uuid,
+})
+
+// The person's answer to an AskUserQuestion dialog, as the session stores it: the tool's result row.
+export const asked = (answer: string, uuid = 'row-a1') => ({
+  message: { type: 'user' as const, role: 'user' as const, content: [{ type: 'tool_result' as const, tool_use_id: 'toolu_ask1', content: answer }] },
+  door: 'tool-result' as const,
+  origin: { kind: 'tool' as const, tool: 'AskUserQuestion' },
+  uuid,
+})
+
 // The end of a main-loop turn that answered with `answer`.
 export const turnEnd = (answer: string, extra: { agentId?: string; isAborted?: boolean } = {}) => ({
   answer,
@@ -173,3 +257,132 @@ export const turnEnd = (answer: string, extra: { agentId?: string; isAborted?: b
   reason: 'answer' as const,
   ...extra,
 })
+
+// What each site hands a render hook, as the engine does on a 120-column terminal with nothing going on.
+export const BAND = {
+  plugin: 'laa-mods',
+  component: 'AbovePrompt' as const,
+  props: { hasSurvey: false, isWorking: false, maxRows: 4, bodyColumns: 120, scroll: { offset: 0, bodyRows: 4 }, view: {} },
+}
+export const FOOTER = { plugin: 'laa-mods', component: 'SessionMode' as const, props: { modes: ['auto-accept'] } }
+const pane = (requestId: string, title: string) => ({
+  plugin: 'laa-mods',
+  component: 'Pane' as const,
+  requestId,
+  props: { title, bodyColumns: 80, isFocused: false, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} },
+})
+export const PANE = { findings: pane('laa-findings', 'laa · last review'), learnings: pane('laa-learnings', 'laa · open learnings') }
+export const SPINNER = {
+  plugin: 'laa-mods',
+  component: 'Spinner' as const,
+  props: { word: 'Working', message: null as string | null, suffix: '…', mode: 'responding' as const },
+}
+export const HINT = {
+  plugin: 'laa-mods',
+  component: 'PromptHint' as const,
+  props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
+}
+export const TURN = { plugin: 'laa-mods', component: 'TurnDuration' as const, props: { word: 'Baked', durationMs: 1000 } }
+
+// The surfaces each site is raised on.
+export const BAND_SURFACES = ['terminal', 'desktop'] as const
+export const ALL_SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
+
+// A laa skill's prompt as the engine expands it.
+export const skill = (name: string) => ({ skill: `laa:${name}`, text: `# /laa:${name}\n\nBug: something\n` })
+
+// Invented ids of one engine launch: the Workflow call, the background task, and the run.
+export const WF = { toolUseId: 'toolu_test1', taskId: 'task_test1', runId: 'wf_test1' }
+
+// What the Workflow tool answers a launch with; a test passes it as `results: { Workflow: WF_LAUNCHED }`.
+export const WF_LAUNCHED = { status: 'async_launched' as const, taskId: WF.taskId, runId: WF.runId, workflowName: 'investigate' }
+
+// The model launching a workflow.
+export const wfCall = (name = 'laa:investigate', tool_use_id = WF.toolUseId) =>
+  ({ tool: 'Workflow' as const, name, args: { bug: 'x' }, tool_use_id })
+
+// A workflow's script starting one agent, by the agent's label. `ids` overrides which call and run it names.
+export const spawnWf = (label: string, ids: { toolUseId?: string; runId?: string; agentIndex?: number } = {}) => ({
+  tool_use_id: ids.toolUseId ?? WF.toolUseId,
+  prompt: 'Do the task.',
+  description: label,
+  subagentType: 'general-purpose',
+  provider: { plugin: 'engine', tier: 'core' as const },
+  parentModel: 'claude-test',
+  background: true,
+  fork: false,
+  workflow: { runId: ids.runId ?? WF.runId, agentIndex: ids.agentIndex ?? 1 },
+})
+
+// The first line of the report in the notification below, as an engine card shows it.
+export const WF_REPORT = '✓ 2 of 3 root causes survived verification · 5 angles'
+
+// What stands between a notification's tags for the launch above: it completed, with a workflow result that carries a report.
+export const WF_DONE = [
+  `<task-id>${WF.taskId}</task-id>`,
+  `<tool-use-id>${WF.toolUseId}</tool-use-id>`,
+  '<status>completed</status>',
+  '<summary>Workflow "investigate" completed</summary>',
+  `<result>${JSON.stringify({ report: '**✓ 2 of 3 root causes survived verification** · 5 angles\n- ✓ `a.go:1` nil address' })}</result>`,
+].join('\n')
+
+// The row a finished background task adds to the conversation, with `body` between its tags.
+export const notification = (body = WF_DONE, uuid = 'row-n1') => ({
+  message: {
+    type: 'user' as const,
+    role: 'user' as const,
+    isMeta: true as const,
+    content: [{ type: 'text' as const, text: `<task-notification>\n${body}\n</task-notification>` }],
+  },
+  door: 'delivery' as const,
+  origin: { kind: 'engine' as const },
+  uuid,
+})
+
+// A drawn tree, or one node of it.
+export type Drawn = string | { type: string; props?: Record<string, unknown>; children?: readonly unknown[] }
+
+// The plugin's own band out of a drawn `AbovePrompt`. The engine stacks every hook's band in a column of its
+// own, so a test that puts a stand-in for the engine's band (`<Box key="engine" />`) beneath the plugin is
+// handed both: the plugin's tree, then the stand-in. Where the plugin drew alone, or passed, the tree is
+// returned as it is.
+export const ownBand = (tree: Drawn): Drawn => {
+  if (typeof tree === 'string' || tree.type !== 'Box' || tree.props?.key !== undefined) return tree
+  const [own, below, ...rest] = (tree.children ?? []) as Drawn[]
+  if (own === undefined || below === undefined || rest.length > 0) return tree
+  const isStandIn = typeof below !== 'string' && below.type === 'Box' && below.props?.key === 'engine'
+  return isStandIn && tree.props?.flexDirection === 'column' ? own : tree
+}
+
+// A Text's props as the plugin set them. The plugin styles strong text with `weight`; some surfaces hand the
+// tree back with `bold: true` beside it, which says the same thing, so it is left out where `weight` is set.
+export const styleOf = (props: Record<string, unknown>) => {
+  if (props.weight === undefined || !('bold' in props)) return props
+  const { bold: _echoed, ...own } = props
+  return own
+}
+
+const attrsOf = (given: Record<string, unknown>) => {
+  const props = styleOf(given)
+  return Object.keys(props).sort().map(k => (props[k] === true ? ` ${k}` : ` ${k}=${JSON.stringify(props[k])}`)).join('')
+}
+
+// A drawn tree as indented tags, for a test to compare whole: every prop and every child string as handed
+// over, in order. The handle a Button's handler lives under is left out: it differs from run to run.
+export const show = (node: Drawn, depth = 0): string => {
+  const pad = '  '.repeat(depth)
+  if (typeof node === 'string') return pad + JSON.stringify(node)
+  const open = `${pad}<${node.type}${attrsOf(node.props ?? {})}`
+  const children = (node.children ?? []) as Drawn[]
+  if (children.length === 0) return `${open} />`
+  if (children.every(c => typeof c === 'string')) return `${open}>${children.map(c => JSON.stringify(c)).join(' ')}</${node.type}>`
+  return [`${open}>`, ...children.map(c => show(c, depth + 1)), `${pad}</${node.type}>`].join('\n')
+}
+
+// A tree as a test writes it down, to compare with `show`: a template literal, without its first line
+// break, its last, and its indentation.
+export const golden = (text: string) => {
+  const lines = text.replace(/^\n/, '').replace(/\n\s*$/, '').split('\n')
+  const indent = Math.min(...lines.map(l => /^ */.exec(l)?.[0].length ?? 0))
+  return lines.map(l => l.slice(indent)).join('\n')
+}
