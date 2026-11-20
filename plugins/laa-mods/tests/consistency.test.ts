@@ -4,7 +4,7 @@ import type { On } from 'claude-code'
 
 import { decodeCells, paletteOf } from '../hooks/draw'
 import {
-  ALL_SURFACES, asked, BAND, BAND_SURFACES, bash, commandRun, fakeRepo, FOOTER, golden, HINT, notification, PANE, reply, show, skill,
+  ALL_SURFACES, asked, BAND, BAND_SURFACES, bash, commandRun, fakeRepo, FOOTER, golden, HINT, notification, ownBand, PANE, reply, show, skill,
   SPINNER, spawnWf, styleOf, TURN, turnEnd, typed, WF, WF_LAUNCHED, wfCall,
 } from './fake'
 import type { Drawn, Fake } from './fake'
@@ -72,7 +72,7 @@ const keyed = (node: Drawn, key: string): Node | undefined => {
 
 // The band on a surface: its first row as text, and its second row (the stepper) when it has one.
 async function band($: Engine, surface: (typeof BAND_SURFACES)[number]) {
-  const tree = await drawn($, { ...BAND, surface })
+  const tree = ownBand(await drawn($, { ...BAND, surface }))
   const row1 = keyed(tree, 'laa')
   return { tree, row1: row1 ? textOf(row1) : '', steps: keyed(tree, 'laa-steps') }
 }

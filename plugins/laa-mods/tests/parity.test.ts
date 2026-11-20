@@ -2,7 +2,7 @@ import { describe as group, expect, test as run } from 'claude-code/testing'
 import type { Engine, TestBody } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { ALL_SURFACES, BAND, BAND_SURFACES, bash, commandRun, fakeRepo, FOOTER, golden, PANE, reply, show, skill } from './fake'
+import { ALL_SURFACES, BAND, BAND_SURFACES, bash, commandRun, fakeRepo, FOOTER, golden, ownBand, PANE, reply, show, skill } from './fake'
 import type { Fake } from './fake'
 
 // The 0.3.0 drawings, pinned: the band, the footer, and both panes, as the plugin hands them to each surface.
@@ -70,7 +70,7 @@ function paneWorld(on: On, f: Fake) {
 async function expectBand($: Engine, want: string) {
   for (const surface of BAND_SURFACES) {
     const ui = await $.ui.mount({ ...BAND, surface })
-    expect(show(await ui.drawn()), surface).toBe(golden(want))
+    expect(show(ownBand(await ui.drawn())), surface).toBe(golden(want))
     await ui.unmount()
   }
 }

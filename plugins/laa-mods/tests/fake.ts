@@ -342,6 +342,18 @@ export const notification = (body = WF_DONE, uuid = 'row-n1') => ({
 // A drawn tree, or one node of it.
 export type Drawn = string | { type: string; props?: Record<string, unknown>; children?: readonly unknown[] }
 
+// The plugin's own band out of a drawn `AbovePrompt`. The engine stacks every hook's band in a column of its
+// own, so a test that puts a stand-in for the engine's band (`<Box key="engine" />`) beneath the plugin is
+// handed both: the plugin's tree, then the stand-in. Where the plugin drew alone, or passed, the tree is
+// returned as it is.
+export const ownBand = (tree: Drawn): Drawn => {
+  if (typeof tree === 'string' || tree.type !== 'Box' || tree.props?.key !== undefined) return tree
+  const [own, below, ...rest] = (tree.children ?? []) as Drawn[]
+  if (own === undefined || below === undefined || rest.length > 0) return tree
+  const isStandIn = typeof below !== 'string' && below.type === 'Box' && below.props?.key === 'engine'
+  return isStandIn && tree.props?.flexDirection === 'column' ? own : tree
+}
+
 // A Text's props as the plugin set them. The plugin styles strong text with `weight`; some surfaces hand the
 // tree back with `bold: true` beside it, which says the same thing, so it is left out where `weight` is set.
 export const styleOf = (props: Record<string, unknown>) => {

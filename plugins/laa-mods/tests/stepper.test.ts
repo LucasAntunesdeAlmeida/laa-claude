@@ -9,7 +9,7 @@ import { stepNumbersOf } from '../hooks/git'
 import { layoutStepper, stepperOf, stepperRow } from '../hooks/stepper'
 import type { Stepper } from '../hooks/stepper'
 import { lastOf, STEPS, tableFor } from '../hooks/tables'
-import { BAND, BAND_SURFACES, bash, fakeRepo, golden, reply, show, skill } from './fake'
+import { BAND, BAND_SURFACES, bash, fakeRepo, golden, ownBand, reply, show, skill } from './fake'
 import type { Drawn, Fake } from './fake'
 
 // The stepper: the band's second row under `visuals: full`. Every repo, branch, and journal here is invented.
@@ -92,7 +92,7 @@ type Node = Exclude<Drawn, string>
 // The band as drawn on a surface: the whole tree, and its two rows when it has two.
 async function band($: Engine, surface: (typeof BAND_SURFACES)[number], props: Partial<typeof BAND.props> = {}) {
   const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, ...props }, surface })
-  const tree = (await ui.drawn()) as Node
+  const tree = ownBand((await ui.drawn()) as Node) as Node
   await ui.unmount()
   const isBand = tree.props?.key === 'laa-band'
   const rows = (isBand ? tree.children ?? [] : []) as Node[]
